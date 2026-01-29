@@ -27,8 +27,8 @@ This repo is a modular HTML5 canvas game. Everything runs in the browser with ES
 State handling lives in `js/core/game.js` with helpers in `js/core/state.js`.
 
 ## Gameplay rules (summary)
-- Launch, fly, land, buy fuel and He3 at industrial/mine pads.
-- Sell He3 and repair at colony/repair pads.
+- Launch, fly, land, buy fuel and Helium-3 at industrial/mine pads.
+- Sell Helium-3 and repair at colony/repair pads.
 - Crashes damage hull and may dump cargo or fuel; towing can cost money.
 - Game over triggers when:
   - money <= 0 (rounded), or
@@ -52,13 +52,13 @@ Input selector (`js/controls/input.js`) auto-switches between keyboard/gamepad u
 
 ## Pads and economy
 Pad types (used in `js/core/game.js` and `js/world/spacePads.js`):
-- Industrial/Mine: refuel + buy He3
-- Colony/Repair: sell He3 + repair hull
+- Industrial/Mine: refuel + buy Helium-3
+- Colony/Repair: sell Helium-3 + repair hull
 
 Economy (`js/economy/economy.js`):
 - `addMoney`/`spendMoney` can trigger game over
-- He3 buy price uses `fuelCostPerKg * cargoHe3CostMultiplier`
-- He3 sell price uses `fuelCostPerKg * cargoHe3SellMultiplier`
+- Helium-3 buy price uses `fuelCostPerKg * cargoHe3CostMultiplier`
+- Helium-3 sell price uses `fuelCostPerKg * cargoHe3SellMultiplier`
 
 ## Audio system
 Procedural SFX (`js/audio/audioEngine.js`):

@@ -1062,7 +1062,7 @@ function handleCargoTransfer(runState, dt, loadInput, unloadInput, audioEngine) 
 
     const added = runState.cargoHold.addBulkCargo({
       id: "he3",
-      name: "He3",
+      name: "Helium-3",
       mass: amount,
       valuePerKg: fuelCostPerKg * he3SellMultiplier,
     });
@@ -2213,16 +2213,16 @@ function buildPadPrompt(runState) {
 
   if (pad.type === "industrial" || pad.type === "mine") {
     if (runState.lastInputType === "gamepad") {
-      return "LB to refuel · RB to load He3 cargo";
+      return "LB to refuel · RB to load Helium-3 cargo";
     }
-    return "R to refuel · L to load He3 cargo";
+    return "R to refuel · L to load Helium-3 cargo";
   }
 
   if (pad.type === "colony" || pad.type === "repair") {
     if (runState.lastInputType === "gamepad") {
-      return "LB to repair · RB to unload He3 cargo";
+      return "LB to repair · RB to unload Helium-3 cargo";
     }
-    return "R to repair · U to unload He3 cargo";
+    return "R to repair · U to unload Helium-3 cargo";
   }
 
   return "";

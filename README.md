@@ -1,6 +1,6 @@
 # Lunar Transporter
 
-Arcade-realistic lunar lander about hauling He3, managing fuel, and landing safely. Built as a modular HTML5 canvas game with a fixed-timestep loop, procedural terrain, and fully client-side JS. `index.php` only handles cache-busting and music playlist discovery.
+Arcade-realistic lunar lander about hauling Helium-3, managing fuel, and landing safely. Built as a modular HTML5 canvas game with a fixed-timestep loop, procedural terrain, and fully client-side JS. `index.php` only handles cache-busting and music playlist discovery.
 
 ## Quick start
 
@@ -23,8 +23,8 @@ Then open `http://localhost:8000` (from this directory).
 You pilot a cargo lander across a long procedural lunar surface. The loop is:
 
 1. Launch, manage thrust and rotation, and land safely.
-2. Buy He3 at industrial/mine pads.
-3. Deliver and sell He3 at colony/repair pads.
+2. Buy Helium-3 at industrial/mine pads.
+3. Deliver and sell Helium-3 at colony/repair pads.
 4. Spend on fuel and repairs, and keep the ship intact.
 
 Game over happens if money hits 0, or if fuel is 0 and you are not landed on a colony/repair pad with cargo to sell.
@@ -54,8 +54,8 @@ All SFX are generated in real-time (no baked samples): engine rumble, thruster h
 
 ## Pads and economy
 
-- Industrial / Mine pads: buy fuel and He3.
-- Colony / Repair pads: sell He3 and repair hull.
+- Industrial / Mine pads: buy fuel and Helium-3.
+- Colony / Repair pads: sell Helium-3 and repair hull.
 - Crash landings can damage hull and drop fuel; towing can cost money.
 
 ## Difficulty
