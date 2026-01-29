@@ -65,6 +65,7 @@ export function createGame({ canvas, shipModel = null, musicTracks = [] }) {
   let sfxEnabled = isSfxEnabled(settings);
   let hasUserStartedMusic = false;
   let hasUserStartedAudio = false;
+  let hasUserPressedEnter = false;
   const audio = createAudioEngine({
     masterVolume: settings.masterVolume / 100,
     sfxVolume: settings.sfxVolume / 100,
@@ -300,14 +301,24 @@ export function createGame({ canvas, shipModel = null, musicTracks = [] }) {
       return;
     }
 
-    if (sfxEnabled) {
+    const menuInputType = mainMenu.getState().inputType;
+    if (menuInputType === "keyboard") {
+      hasUserPressedEnter = true;
+    }
+
+    if (action.itemId === "start" && !hasUserPressedEnter) {
+      mainMenu.setMessage("Press Enter to start (enables audio).");
+      return;
+    }
+
+    if (sfxEnabled && hasUserPressedEnter) {
       audio.start();
       hasUserStartedAudio = true;
       if (audio.setEnabled) {
         audio.setEnabled(true);
       }
     }
-    if (musicEnabled) {
+    if (musicEnabled && hasUserPressedEnter) {
       music.start();
       hasUserStartedMusic = true;
     }
