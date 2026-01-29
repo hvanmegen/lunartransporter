@@ -675,13 +675,13 @@ export function createAudioEngine({ masterVolume = 0.8, sfxVolume = 0.8 } = {}) 
     const heatFactor = clamp((cooling.heat - cooling.threshold) / (1 - cooling.threshold), 0, 1);
     const tempFactor = clamp((cooling.tempC - 100) / Math.max(1, cooling.tempMaxC - 100), 0, 1);
     const intensity = clamp(0.25 + heatFactor * 0.25 + tempFactor * 0.75, 0, 1);
-    const gainScale = cooling.gain * (0.6 + tempFactor * 0.9);
+    const gainScale = cooling.gain * (0.6 + tempFactor * 0.9) * 0.4;
     playCoolingTick(intensity, tempFactor, gainScale);
 
     const minDelay = Math.min(cooling.minDelay, cooling.maxDelay);
     const maxDelay = Math.max(cooling.minDelay, cooling.maxDelay);
     const interval = lerp(maxDelay, minDelay, Math.max(heatFactor, tempFactor));
-    const jitter = interval * (0.25 + Math.random() * 0.45);
+    const jitter = interval * (0.05 + Math.random() * 1.8);
     nextCoolingTickTime = now + interval + jitter;
   }
 
