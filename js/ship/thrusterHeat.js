@@ -9,9 +9,12 @@ export function createThrusterHeatState() {
 export function updateThrusterHeat(state, inputs, dt, config) {
   const heatState = state || createThrusterHeatState();
   const riseRate = getNumber(config && config.thrusterHeatRise, 1.1);
-  const baseCool = getNumber(config && config.thrusterHeatCool, 0.12);
-  const coolRateActive = getNumber(config && config.thrusterHeatCoolActive, 0.4);
-  const coolRateIdle = getNumber(config && config.thrusterHeatCoolIdle, baseCool);
+  const coolScale = getNumber(config && config.thrusterHeatCoolScale, 1);
+  const baseCool = getNumber(config && config.thrusterHeatCool, 0.12) * coolScale;
+  const coolRateActive =
+    getNumber(config && config.thrusterHeatCoolActive, 0.4) * coolScale;
+  const coolRateIdle =
+    getNumber(config && config.thrusterHeatCoolIdle, baseCool) * coolScale;
   const maxHeat = getNumber(config && config.thrusterHeatMax, 1);
 
   const mainInput = clamp(getNumber(inputs && inputs.main, 0), 0, 1);

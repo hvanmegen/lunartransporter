@@ -6,7 +6,6 @@ import {
   LANDING_LATERAL_SPEED_THRESHOLD,
   LANDING_ROTATION_SPEED_THRESHOLD,
   LANDING_VERTICAL_SPEED_THRESHOLD,
-  SHIP_TARGET_TOTAL_MASS,
   SHIP_ROTATION_FUEL_BURN_RATE,
   SHIP_COLLISION_RADIUS,
   SHIP_FUEL_BURN_RATE,
@@ -46,6 +45,7 @@ import { calculateShipStats } from "../ship/modules/registry.js";
 import { createCargoHold } from "../economy/cargo.js";
 import { createEconomy } from "../economy/economy.js";
 import { createStarfield } from "../render/starfield.js";
+import { createDustSystem } from "../render/dust.js";
 
 // Main loop and state manager.
 export function createGame({ canvas, shipModel = null, musicTracks = [] }) {
@@ -56,11 +56,15 @@ export function createGame({ canvas, shipModel = null, musicTracks = [] }) {
 
   let config = loadConfig();
   const mainMenu = createMenu({
-    title: "Lunar Trucker",
+    title: "Lunar Transporter",
     items: buildMainMenuItems(config, runState, hasSave()),
   });
 
   let settings = loadSettingsOrDefault();
+  let musicEnabled = isMusicEnabled(settings);
+  let sfxEnabled = isSfxEnabled(settings);
+  let hasUserStartedMusic = false;
+  let hasUserStartedAudio = false;
   const audio = createAudioEngine({
     masterVolume: settings.masterVolume / 100,
     sfxVolume: settings.sfxVolume / 100,
@@ -68,11 +72,15 @@ export function createGame({ canvas, shipModel = null, musicTracks = [] }) {
   const musicDisplay = {
     title: "",
     timer: 0,
+    enabled: musicEnabled,
   };
   const music = createMusicPlayer({
     tracks: musicTracks,
     volume: (settings.masterVolume / 100) * (settings.musicVolume / 100),
     onTrackChange: (src) => {
+      if (!musicEnabled) {
+        return;
+      }
       musicDisplay.title = formatTrackTitle(src);
       musicDisplay.timer = 0;
     },
@@ -83,9 +91,7 @@ export function createGame({ canvas, shipModel = null, musicTracks = [] }) {
     onApply: (nextSettings) => {
       settings = nextSettings;
       flightInput.setMode(settings.inputMode);
-      audio.setMasterVolume(settings.masterVolume / 100);
-      audio.setSfxVolume(settings.sfxVolume / 100);
-      music.setVolume((settings.masterVolume / 100) * (settings.musicVolume / 100));
+      updateAudioSettings();
       return saveSettings(nextSettings);
     },
   });
@@ -97,12 +103,15 @@ export function createGame({ canvas, shipModel = null, musicTracks = [] }) {
   let animationFrameId = 0;
   let running = false;
   const logDebug = createLogger(config);
+  updateAudioSettings();
 
   stateMachine
     .addState(GameState.MENU, {
       update(deltaSeconds) {
         const action = mainMenu.update(deltaSeconds);
-        audio.update({ state: GameState.MENU, throttle: 0, rotation: 0 });
+        if (sfxEnabled) {
+          audio.update({ state: GameState.MENU, throttle: 0, rotation: 0 });
+        }
         if (action) {
           if (action.type === "back") {
             if (runState && runState.paused) {
@@ -119,7 +128,9 @@ export function createGame({ canvas, shipModel = null, musicTracks = [] }) {
     .addState(GameState.OPTIONS, {
       update(deltaSeconds) {
         const action = options.update(deltaSeconds);
-        audio.update({ state: GameState.OPTIONS, throttle: 0, rotation: 0 });
+        if (sfxEnabled) {
+          audio.update({ state: GameState.OPTIONS, throttle: 0, rotation: 0 });
+        }
         if (!action) {
           return;
         }
@@ -232,6 +243,14 @@ export function createGame({ canvas, shipModel = null, musicTracks = [] }) {
       },
     })
     .addState(GameState.GAME_OVER, {
+      enter() {
+        if (audio.setEnabled) {
+          audio.setEnabled(false);
+        }
+        music.stop();
+        musicDisplay.title = "";
+        musicDisplay.timer = 0;
+      },
       update() {
         pauseInput.update();
         if (pauseInput.consume()) {
@@ -240,18 +259,66 @@ export function createGame({ canvas, shipModel = null, musicTracks = [] }) {
       },
     });
 
+  function updateAudioSettings() {
+    musicEnabled = isMusicEnabled(settings);
+    sfxEnabled = isSfxEnabled(settings);
+    musicDisplay.enabled = musicEnabled;
+
+    audio.setMasterVolume(settings.masterVolume / 100);
+    audio.setSfxVolume(settings.sfxVolume / 100);
+    if (audio.setEnabled) {
+      audio.setEnabled(sfxEnabled && hasUserStartedAudio);
+    }
+
+    const nextMusicVolume = (settings.masterVolume / 100) * (settings.musicVolume / 100);
+    music.setVolume(nextMusicVolume);
+
+    if (!musicEnabled) {
+      music.stop();
+      musicDisplay.title = "";
+      musicDisplay.timer = 0;
+      return;
+    }
+
+    if (hasUserStartedMusic) {
+      music.start();
+    }
+  }
+
+  function triggerGameOver() {
+    if (stateMachine.getState() === GameState.GAME_OVER) {
+      return;
+    }
+    stateMachine.setState(GameState.GAME_OVER);
+    if (runState) {
+      runState.currentState = GameState.GAME_OVER;
+    }
+  }
+
   function handleMenuAction(action) {
     if (action.type !== "select") {
       return;
     }
 
-    audio.start();
-    music.start();
+    if (sfxEnabled) {
+      audio.start();
+      hasUserStartedAudio = true;
+      if (audio.setEnabled) {
+        audio.setEnabled(true);
+      }
+    }
+    if (musicEnabled) {
+      music.start();
+      hasUserStartedMusic = true;
+    }
     logDebug("menu action", action.itemId);
 
     switch (action.itemId) {
+      case "resume":
+        resumeRun();
+        break;
       case "start":
-        startOrResumeRun();
+        startNewRun();
         break;
       case "options":
         stateMachine.setState(GameState.OPTIONS);
@@ -270,12 +337,24 @@ export function createGame({ canvas, shipModel = null, musicTracks = [] }) {
     }
   }
 
-  function startOrResumeRun() {
+  function resumeRun() {
     if (!runState) {
-      runState = createNewRun(stateMachine, shipModel, config);
-      logDebug("new run created", runState);
+      startNewRun();
+      return;
     }
 
+    runState.paused = false;
+    stateMachine.setState(runState.currentState || GameState.LANDED);
+    logDebug("state ->", runState.currentState || GameState.LANDED);
+    mainMenu.setItems(buildMainMenuItems(config, runState, hasSave()));
+  }
+
+  function startNewRun() {
+    if (musicEnabled && hasUserStartedMusic) {
+      rotateMusicTrack(music, musicDisplay);
+    }
+    runState = createNewRun(stateMachine, shipModel, config);
+    logDebug("new run created", runState);
     runState.paused = false;
     stateMachine.setState(runState.currentState || GameState.LANDED);
     logDebug("state ->", runState.currentState || GameState.LANDED);
@@ -334,7 +413,13 @@ export function createGame({ canvas, shipModel = null, musicTracks = [] }) {
   }
 
   function resetRunToMenu() {
-    rotateMusicTrack(music, musicDisplay);
+    if (musicEnabled) {
+      rotateMusicTrack(music, musicDisplay);
+    } else {
+      music.stop();
+      musicDisplay.title = "";
+      musicDisplay.timer = 0;
+    }
     runState = null;
     mainMenu.setMessage("Run reset.");
           mainMenu.clearInput();
@@ -365,6 +450,10 @@ export function createGame({ canvas, shipModel = null, musicTracks = [] }) {
 
     if (!ship || !terrain) {
       return;
+    }
+
+    if (flightInput.getLastUsedType) {
+      runState.lastInputType = flightInput.getLastUsedType();
     }
 
     const altitude = getAltitudeFromNearestPad(runState);
@@ -458,14 +547,60 @@ export function createGame({ canvas, shipModel = null, musicTracks = [] }) {
       updateShipMass(ship);
     }
 
-    const cargoResult = handleCargoTransfer(runState, deltaSeconds, loadInput, unloadInput);
+    const cargoResult = handleCargoTransfer(runState, deltaSeconds, loadInput, unloadInput, audio);
     if (cargoResult && cargoResult.delta !== 0) {
       updateShipMass(ship);
+    }
+
+    const moneyValue = runState.economy ? runState.economy.getMoney() : runState.money ?? 0;
+    if (Math.round(moneyValue) <= 0) {
+      triggerGameOver();
+      return;
+    }
+
+    if (ship.fuel <= 0) {
+      const onPad =
+        runState.currentState === GameState.LANDED || runState.currentState === GameState.CRASHLANDED;
+      const pad = runState.activePad;
+      const canSellPad = onPad && pad && (pad.type === "colony" || pad.type === "repair");
+      const cargoMass = runState.cargoHold ? runState.cargoHold.getTotalMass() : 0;
+      if (!(canSellPad && cargoMass > 0)) {
+        triggerGameOver();
+        return;
+      }
     }
 
     if (ship) {
       const heatInput = isFlightState ? Math.max(0, runState.thrustInput || 0) : 0;
       ship.thrusterHeat = updateThrusterHeat(ship.thrusterHeat, { main: heatInput }, deltaSeconds, config);
+    }
+
+    if (runState.dust) {
+      const dustRange =
+        runState.config && typeof runState.config.dustAltitude === "number"
+          ? runState.config.dustAltitude
+          : 40;
+      const exhaustDir = {
+        x: -Math.sin(ship.rotation || 0),
+        y: Math.cos(ship.rotation || 0),
+      };
+      const impact = findGroundImpact(runState, ship.position, exhaustDir, dustRange);
+      const dustActive =
+        isFlightState &&
+        runState.thrustInput > 0.1 &&
+        impact &&
+        impact.distance > 0 &&
+        impact.distance < dustRange;
+      const intensity =
+        dustActive && dustRange > 0
+          ? (1 - impact.distance / dustRange) * runState.thrustInput * impact.alignment
+          : 0;
+      runState.dust.update(deltaSeconds, {
+        active: dustActive,
+        x: impact ? impact.x : ship.position.x,
+        groundY: impact ? impact.y : getGroundHeightAt(runState, ship.position.x),
+        intensity,
+      });
     }
 
     updateCamera(runState, terrain, deltaSeconds, settings.cameraZoomSensitivity);
@@ -476,14 +611,18 @@ export function createGame({ canvas, shipModel = null, musicTracks = [] }) {
 
     updateTelemetry(runState, deltaSeconds);
 
-    audio.update({
-      state: runState.currentState,
-      throttle: runState.thrustInput || 0,
-      rotation: runState.rotationInput || 0,
-      hotThrusters: buildCoolingInputs(runState, config),
-      refuel: buildRefuelAudio(runState, refuelResult),
-      cargo: buildCargoAudio(runState, cargoResult),
-    });
+    if (sfxEnabled) {
+      audio.update({
+        state: runState.currentState,
+        throttle: runState.thrustInput || 0,
+        rotation: runState.rotationInput || 0,
+        hotThrusters: buildCoolingInputs(runState, config),
+        refuel: buildRefuelAudio(runState, refuelResult),
+        repair: buildRepairAudio(runState, repairResult, refuelInput),
+        cargo: buildCargoAudio(runState, cargoResult),
+        fuelAlarm: buildFuelAlarmAudio(runState),
+      });
+    }
   }
 
   function shouldLaunch() {
@@ -579,6 +718,9 @@ export function createGame({ canvas, shipModel = null, musicTracks = [] }) {
       camera.begin(ctx);
       drawTerrain(ctx, runState.world.terrain, startX, endX, fillToY);
       drawPads(ctx, runState.world.pads, startX, endX, runState.world.width || 0);
+      if (runState.dust) {
+        runState.dust.draw(ctx);
+      }
 
       if (runState.ship) {
         const altitude = typeof runState.altitude === "number" ? runState.altitude : getAltitudeFromNearestPad(runState);
@@ -594,7 +736,7 @@ export function createGame({ canvas, shipModel = null, musicTracks = [] }) {
           rotationEnabled,
           runState.ship.thrusterHeat
         );
-        drawPadGuides(ctx, runState, cameraPos, viewWidth);
+        drawPadGuides(ctx, runState, cameraPos, viewWidth, settings && settings.unitSystem);
       }
 
       camera.end(ctx);
@@ -623,12 +765,13 @@ export function createGame({ canvas, shipModel = null, musicTracks = [] }) {
     }
 
     renderHud(ctx, runState, width, height, settings && settings.unitSystem);
+    renderPadPrompt(ctx, runState, width, height);
     ctx.restore();
 
     if (currentState === GameState.CRASHLANDED) {
       renderCrashLanded(ctx, width, height, runState);
     } else if (currentState === GameState.CRASHED) {
-      renderCrashed(ctx, width, height);
+      renderCrashed(ctx, width, height, config);
     } else if (currentState === GameState.GAME_OVER) {
       renderGameOver(ctx, width, height);
     }
@@ -699,14 +842,25 @@ function buildMainMenuItems(config, runState, hasSavedGame) {
   const canSave = inRun && currentState === GameState.LANDED;
   const loadAllowed = !currentState || currentState !== GameState.FLIGHT;
   const canLoad = Boolean(hasSavedGame) && loadAllowed;
+  const items = [];
 
-  return [
-    { id: "start", label: "Start Game" },
-    { id: "load", label: "Load Game", disabled: !canLoad },
-    { id: "save", label: "Save Game", disabled: !canSave },
-    { id: "options", label: "Options" },
-    { id: "debug", label: `Debug: ${config.debug ? "On" : "Off"}`, isActive: config.debug },
-  ];
+  if (inRun) {
+    items.push({ id: "resume", label: "Resume game" });
+  }
+
+  items.push({ id: "start", label: "Start new game" });
+  items.push({ id: "spacer-main", type: "spacer", disabled: true });
+  items.push({ id: "load", label: "Load Game", disabled: !canLoad });
+  items.push({ id: "save", label: "Save Game", disabled: !canSave });
+  items.push({ id: "options", label: "Options" });
+  items.push({ id: "spacer-debug", type: "spacer", disabled: true });
+  items.push({
+    id: "debug",
+    label: `Debug: ${config.debug ? "On" : "Off"}`,
+    isActive: config.debug,
+  });
+
+  return items;
 }
 
 function createRefuelState() {
@@ -845,7 +999,23 @@ function buildRefuelAudio(runState, refuelResult) {
   };
 }
 
-function handleCargoTransfer(runState, dt, loadInput, unloadInput) {
+function buildRepairAudio(runState, repairResult, repairInput) {
+  if (!runState || !runState.ship) {
+    return null;
+  }
+
+  const ship = runState.ship;
+  const pad = runState.activePad;
+  const onPad =
+    runState.currentState === GameState.LANDED || runState.currentState === GameState.CRASHLANDED;
+  const canRepair =
+    onPad && pad && (pad.type === "colony" || pad.type === "repair") && ship.hullHP < 100;
+  const active = Boolean(canRepair && repairInput > 0 && repairResult && repairResult.applied > 0);
+  const intensity = clamp((100 - ship.hullHP) / 100, 0, 1);
+  return { active, intensity };
+}
+
+function handleCargoTransfer(runState, dt, loadInput, unloadInput, audioEngine) {
   if (!runState || !runState.ship || !runState.cargoHold) {
     return null;
   }
@@ -901,10 +1071,15 @@ function handleCargoTransfer(runState, dt, loadInput, unloadInput) {
       runState.money = runState.economy.getMoney();
     }
     ship.cargoMass = runState.cargoHold.getTotalMass();
+    ship.cargo = runState.cargoHold.getSlots();
+    const percentAfter = capacity > 0 ? ship.cargoMass / capacity : 0;
+    if (percentAfter >= 1 && audioEngine && audioEngine.playCargoClick) {
+      audioEngine.playCargoClick();
+    }
     return {
       active: added > 0,
       mode: "load",
-      percent: capacity > 0 ? ship.cargoMass / capacity : 0,
+      percent: percentAfter,
       delta: added,
     };
   }
@@ -921,6 +1096,7 @@ function handleCargoTransfer(runState, dt, loadInput, unloadInput) {
       runState.money = runState.economy.getMoney();
     }
     ship.cargoMass = runState.cargoHold.getTotalMass();
+    ship.cargo = runState.cargoHold.getSlots();
     return {
       active: removed > 0,
       mode: "unload",
@@ -951,6 +1127,55 @@ function buildCargoAudio(runState, cargoResult) {
   return { active: false, percent, mode: "load" };
 }
 
+function buildFuelAlarmAudio(runState) {
+  if (!runState || !runState.ship) {
+    return { active: false };
+  }
+
+  const ship = runState.ship;
+  const capacity = ship.fuelCapacity ?? 0;
+  if (capacity <= 0) {
+    return { active: false };
+  }
+
+  const percent = (ship.fuel ?? 0) / capacity;
+  const threshold =
+    typeof runState.config?.lowFuelWarningThreshold === "number"
+      ? runState.config.lowFuelWarningThreshold
+      : 0.2;
+  if (percent >= threshold) {
+    return { active: false };
+  }
+
+  const pad = runState.activePad;
+  const onRefuelPad =
+    (runState.currentState === GameState.LANDED || runState.currentState === GameState.CRASHLANDED) &&
+    pad &&
+    (pad.type === "industrial" || pad.type === "mine");
+
+  const interval =
+    typeof runState.config?.lowFuelWarningInterval === "number"
+      ? runState.config.lowFuelWarningInterval
+      : 0.9;
+  return { active: !onRefuelPad, interval };
+}
+
+function buildDustConfig(config) {
+  const source = config || {};
+  const readNumber = (value, fallback) =>
+    typeof value === "number" && Number.isFinite(value) ? value : fallback;
+
+  return {
+    maxParticles: Math.round(clamp(readNumber(source.dustMaxParticles, 140), 20, 600)),
+    spawnRate: clamp(readNumber(source.dustSpawnRate, 90), 5, 400),
+    baseSpeed: clamp(readNumber(source.dustBaseSpeed, 12), 1, 60),
+    lift: clamp(readNumber(source.dustLift, 6), 1, 60),
+    spread: clamp(readNumber(source.dustSpread, 16), 2, 120),
+    size: clamp(readNumber(source.dustSize, 1.3), 0.5, 6),
+    life: clamp(readNumber(source.dustLife, 0.8), 0.1, 3),
+  };
+}
+
 function buildCoolingInputs(runState, config) {
   if (!runState || !runState.ship || !runState.ship.thrusterHeat) {
     return null;
@@ -977,7 +1202,7 @@ function buildCoolingInputs(runState, config) {
 }
 
 function updateMusicDisplay(musicDisplay, deltaSeconds) {
-  if (!musicDisplay || !musicDisplay.title) {
+  if (!musicDisplay || !musicDisplay.enabled || !musicDisplay.title) {
     return;
   }
 
@@ -985,7 +1210,7 @@ function updateMusicDisplay(musicDisplay, deltaSeconds) {
 }
 
 function renderNowPlaying(ctx, width, height, musicDisplay) {
-  if (!musicDisplay || !musicDisplay.title) {
+  if (!musicDisplay || !musicDisplay.enabled || !musicDisplay.title) {
     return;
   }
 
@@ -1057,8 +1282,12 @@ function rotateMusicTrack(music, musicDisplay) {
 }
 
 function createNewRun(stateMachine, shipModel, config) {
-  const newGame = createNewGame({ worldWidth: 5000, seed: 0, shipModel, config });
-  const spacePads = newGame.world.spacePads || createSpacePads({ worldWidth: 5000 });
+  const worldWidth =
+    config && typeof config.worldWidth === "number" && Number.isFinite(config.worldWidth)
+      ? config.worldWidth
+      : 5000;
+  const newGame = createNewGame({ worldWidth, seed: 0, shipModel, config });
+  const spacePads = newGame.world.spacePads || createSpacePads({ worldWidth });
   const shipPhysics = createShipPhysics({
     mass: newGame.ship.mass || SHIP_MASS,
     gravity: LUNAR_GRAVITY,
@@ -1076,6 +1305,7 @@ function createNewRun(stateMachine, shipModel, config) {
   });
   const cargoHold = createCargoHold({ maxMass: newGame.ship.cargoCapacity || 0 });
   newGame.ship.thrusterHeat = createThrusterHeatState();
+  const dust = createDustSystem(buildDustConfig(config));
 
   return {
     active: true,
@@ -1091,6 +1321,7 @@ function createNewRun(stateMachine, shipModel, config) {
     shipPhysics,
     collision,
     camera,
+    dust,
     thrustInput: 0,
     cargoHold,
     economy,
@@ -1132,9 +1363,7 @@ function normalizeLoadedRun(saveData, stateMachine, shipModel, config) {
   const stats = calculateShipStats(baseMass, modules);
   const fuelAmount = typeof ship.fuel === "number" ? ship.fuel : stats.fuelCapacity;
   const fuelMass = fuelAmount * FUEL_MASS_PER_UNIT;
-  const targetTotal = SHIP_TARGET_TOTAL_MASS;
-  const defaultDryMass = Math.max(0, targetTotal - fuelMass);
-  const dryMass = typeof ship.dryMass === "number" ? ship.dryMass : defaultDryMass;
+  const dryMass = stats.mass;
   const cargoCapacity =
     typeof ship.cargoCapacity === "number"
       ? ship.cargoCapacity
@@ -1159,6 +1388,7 @@ function normalizeLoadedRun(saveData, stateMachine, shipModel, config) {
     zoom: 1,
     viewport: { width: 0, height: 0 },
   });
+  const dust = createDustSystem(buildDustConfig(config));
   const economy = createEconomy({
     startingMoney: typeof saveData.money === "number" ? saveData.money : 0,
     stateMachine,
@@ -1198,7 +1428,10 @@ function normalizeLoadedRun(saveData, stateMachine, shipModel, config) {
       landed: normalizedState === GameState.LANDED || normalizedState === GameState.CRASHLANDED,
       model: shipModel,
       collisionBottom,
-      thrusterHeat: createThrusterHeatState(),
+      thrusterHeat:
+        ship.thrusterHeat && typeof ship.thrusterHeat === "object"
+          ? { ...ship.thrusterHeat }
+          : createThrusterHeatState(),
     },
     currentState: normalizedState,
     spawnPad: spawnPad || pad || null,
@@ -1208,6 +1441,7 @@ function normalizeLoadedRun(saveData, stateMachine, shipModel, config) {
     shipPhysics,
     collision,
     camera,
+    dust,
     thrustInput: 0,
     cargoHold,
     economy,
@@ -1324,7 +1558,7 @@ function clamp(value, min, max) {
 
 function getDifficultyTuning(difficulty) {
   const mode = String(difficulty || "easy").toLowerCase();
-  if (mode === "hard") {
+  if (mode === "hard" || mode === "high") {
     return {
       thrustScale: 0.9,
       gravityScale: 1.1,
@@ -1396,7 +1630,14 @@ function updateShipMass(ship) {
     return;
   }
 
-  const dryMass = typeof ship.dryMass === "number" ? ship.dryMass : ship.mass || 0;
+  let dryMass = typeof ship.dryMass === "number" ? ship.dryMass : 0;
+  if (!Number.isFinite(dryMass) || dryMass <= 0) {
+    const baseMass =
+      ship.model && typeof ship.model.mass === "number" && Number.isFinite(ship.model.mass)
+        ? ship.model.mass
+        : SHIP_MASS;
+    dryMass = calculateShipStats(baseMass, ship.modules || {}).mass;
+  }
   const fuel = typeof ship.fuel === "number" ? ship.fuel : 0;
   const cargoMass = typeof ship.cargoMass === "number" ? ship.cargoMass : 0;
   ship.dryMass = dryMass;
@@ -1539,7 +1780,7 @@ function handleCrashLanding(runState, { onPad, pad }, stateMachine) {
   ship.angularVelocity = 0;
   ship.rotation = 0;
   ship.landed = true;
-  ship.hullHP = randomInt(5, 20);
+  ship.hullHP = randomInt(6, 24);
 
   handleCrash(runState);
 
@@ -1576,6 +1817,14 @@ function handleCrashLanding(runState, { onPad, pad }, stateMachine) {
 
   if (stateMachine && stateMachine.getState() === GameState.GAME_OVER) {
     runState.currentState = GameState.GAME_OVER;
+    return;
+  }
+
+  if (ship.hullHP > 1) {
+    runState.currentState = GameState.LANDED;
+    if (stateMachine) {
+      stateMachine.setState(GameState.LANDED);
+    }
     return;
   }
 
@@ -1700,7 +1949,7 @@ function getPadColor(type) {
   return "#7dd38a";
 }
 
-function drawPadGuides(ctx, runState, cameraPos, viewWidth) {
+function drawPadGuides(ctx, runState, cameraPos, viewWidth, unitSystem) {
   if (!runState || !runState.ship || !runState.world) {
     return;
   }
@@ -1753,6 +2002,11 @@ function drawPadGuides(ctx, runState, cameraPos, viewWidth) {
 
   ctx.save();
   ctx.lineWidth = 1.5;
+  ctx.font = "500 12px system-ui";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  const unitConfig = getUnitConfig(unitSystem || "metric");
+  const worldScale = getWorldScale(runState);
 
   targets.forEach(({ pad }) => {
     const dx = wrappedDistance(pad.x, ship.position.x, worldWidth);
@@ -1765,7 +2019,7 @@ function drawPadGuides(ctx, runState, cameraPos, viewWidth) {
     const nx = dx / length;
     const ny = dy / length;
     const arrowOffset = 36;
-    const arrowLength = 70;
+    const arrowLength = 36;
     const startX = ship.position.x;
     const startY = ship.position.y;
     const baseX = startX + nx * arrowOffset;
@@ -1796,6 +2050,13 @@ function drawPadGuides(ctx, runState, cameraPos, viewWidth) {
     );
     ctx.closePath();
     ctx.fill();
+
+    const distanceValue = convertValue(length * worldScale, unitConfig.distance);
+    const label = `${distanceValue.toFixed(0)} ${unitConfig.distance.label}`;
+    const labelOffset = 32;
+    const closeThreshold = 120;
+    const labelDirection = length < closeThreshold ? -1 : 1;
+    ctx.fillText(label, endX + nx * labelOffset * labelDirection, endY + ny * labelOffset * labelDirection);
   });
 
   ctx.restore();
@@ -1814,56 +2075,128 @@ function renderHud(ctx, runState, width, height, unitSystemOverride) {
   const telemetry = runState.telemetry || createTelemetrySnapshot(runState);
   const unitSystem = unitSystemOverride || "metric";
   const unitConfig = getUnitConfig(unitSystem);
-  const speed = convertValue(telemetry.speed, unitConfig.speed);
-  const accelThrust = convertValue(telemetry.accelThrust, unitConfig.accel);
-  const accelNet = convertValue(telemetry.accelNet, unitConfig.accel);
+  const worldScale = getWorldScale(runState);
+  const speed = convertValue(telemetry.speed * worldScale, unitConfig.speed);
+  const accelThrust = convertValue(telemetry.accelThrust * worldScale, unitConfig.accel);
+  const accelNet = convertValue(telemetry.accelNet * worldScale, unitConfig.accel);
   const thrustForce = convertValue(telemetry.thrustForce, unitConfig.thrust);
-  const lateral = convertValue(telemetry.lateral, unitConfig.distance);
-  const altitude = convertValue(telemetry.altitude, unitConfig.distance);
-  const groundDistance = convertValue(telemetry.groundDistance, unitConfig.distance);
-  const verticalSpeed = convertValue(telemetry.verticalSpeed, unitConfig.speed);
+  const lateral = convertValue(telemetry.lateral * worldScale, unitConfig.distance);
+  const altitude = convertValue(telemetry.altitude * worldScale, unitConfig.distance);
+  const groundDistance = convertValue(telemetry.groundDistance * worldScale, unitConfig.distance);
+  const verticalSpeed = convertValue(telemetry.verticalSpeed * worldScale, unitConfig.speed);
   const fuelMass = convertValue(telemetry.fuelKg, unitConfig.mass);
+  const cargoMass = convertValue(telemetry.cargoMass, unitConfig.mass);
+  const dryMass = convertValue(telemetry.dryMass, unitConfig.mass);
   const mass = convertValue(telemetry.mass, unitConfig.mass);
   const hullPercent = clamp(telemetry.hull, 0, 100);
   const moneySymbol = getMoneySymbol(unitSystem);
   const engineTemp = formatTemperature(telemetry, unitSystem);
+  const riskTone = getLandingRiskTone(runState);
+  const accelG = (telemetry.accelThrust * worldScale) / EARTH_GRAVITY;
 
   ctx.save();
-  ctx.fillStyle = "#dfe6ee";
-  ctx.font = "500 16px system-ui";
   ctx.textAlign = "left";
   ctx.textBaseline = "top";
 
   const left = 24;
   const line = 18;
+  const moneyLineHeight = 24;
   const lines = [
-    `Fuel: ${fuelMass.toFixed(0)} ${unitConfig.mass.label} (${telemetry.fuelPercent.toFixed(0)}%)`,
-    `Speed: ${speed.toFixed(1)} ${unitConfig.speed.label}`,
-    `Accel: ${accelThrust.toFixed(2)} ${unitConfig.accel.label} (${telemetry.accelG.toFixed(2)} g)  Net: ${accelNet.toFixed(2)} ${unitConfig.accel.label}`,
-    `Thrust: ${thrustForce.toFixed(0)} ${unitConfig.thrust.label}`,
-    `Engine: ${engineTemp.value.toFixed(0)} ${engineTemp.label}`,
-    `Lateral: ${lateral.toFixed(1)} ${unitConfig.distance.label}  Vertical: ${altitude.toFixed(1)} ${unitConfig.distance.label}`,
-    `Ground: ${groundDistance.toFixed(1)} ${unitConfig.distance.label}`,
-    `V-Speed: ${verticalSpeed.toFixed(1)} ${unitConfig.speed.label}`,
-    `Angle: ${telemetry.angleDeg.toFixed(1)}°  Spin: ${telemetry.spinDeg.toFixed(1)}°/s`,
-    `Hull: ${hullPercent.toFixed(0)}%  Mass: ${mass.toFixed(0)} ${unitConfig.mass.label}`,
-    `Money: ${telemetry.money.toFixed(0)} ${moneySymbol}`,
+    {
+      text: `Money: ${formatMoney(telemetry.money, moneySymbol)}`,
+      tone: null,
+      font: "600 20px system-ui",
+      color: "#f6c453",
+      height: moneyLineHeight,
+    },
+    { text: "", tone: null, height: line },
+    { text: `Dry Mass: ${dryMass.toFixed(0)} ${unitConfig.mass.label}`, tone: null },
+    {
+      text: `Fuel: ${fuelMass.toFixed(0)} ${unitConfig.mass.label} (${telemetry.fuelPercent.toFixed(0)}%)`,
+      tone: null,
+    },
+    {
+      text: `Cargo: ${cargoMass.toFixed(0)} ${unitConfig.mass.label} (${telemetry.cargoPercent.toFixed(0)}%)`,
+      tone: null,
+    },
+    { text: `Total Mass: ${mass.toFixed(0)} ${unitConfig.mass.label}`, tone: null },
+    { text: "", tone: null, height: line },
+    { text: `Speed: ${speed.toFixed(1)} ${unitConfig.speed.label}`, tone: riskTone },
+    {
+      text: `Accel: ${accelThrust.toFixed(2)} ${unitConfig.accel.label} (${accelG.toFixed(2)} g)  Net: ${accelNet.toFixed(2)} ${unitConfig.accel.label}`,
+      tone: null,
+    },
+    { text: `Thrust: ${thrustForce.toFixed(0)} ${unitConfig.thrust.label}`, tone: null },
+    { text: `Engine: ${engineTemp.value.toFixed(0)} ${engineTemp.label}`, tone: null },
+    {
+      text: `Lateral: ${lateral.toFixed(1)} ${unitConfig.distance.label}  Vertical: ${altitude.toFixed(1)} ${unitConfig.distance.label}`,
+      tone: riskTone,
+    },
+    { text: `Ground: ${groundDistance.toFixed(1)} ${unitConfig.distance.label}`, tone: null },
+    { text: `V-Speed: ${verticalSpeed.toFixed(1)} ${unitConfig.speed.label}`, tone: riskTone },
+    { text: `Angle: ${telemetry.angleDeg.toFixed(1)}°  Spin: ${telemetry.spinDeg.toFixed(1)}°/s`, tone: riskTone },
+    { text: "", tone: null, height: line },
+    { text: `Hull: ${hullPercent.toFixed(0)}%`, tone: null },
   ];
 
-  const prompt = buildPadPrompt(runState);
-  if (prompt) {
-    lines.push(prompt);
-  }
-
   const bottomPadding = 24;
-  let y = height - bottomPadding - line * (lines.length - 1);
+  const totalHeight = lines.reduce((sum, entry) => sum + (entry.height ?? line), 0);
+  let y = height - bottomPadding - totalHeight;
 
-  lines.forEach((text) => {
-    ctx.fillText(text, left, y);
-    y += line;
+  lines.forEach((entry) => {
+    const heightStep = entry.height ?? line;
+    if (!entry.text) {
+      y += heightStep;
+      return;
+    }
+    ctx.font = entry.font || "500 16px system-ui";
+    ctx.fillStyle = entry.color || getToneColor(entry.tone) || "#dfe6ee";
+    ctx.fillText(entry.text, left, y);
+    y += heightStep;
   });
 
   ctx.restore();
+}
+
+function getLandingRiskTone(runState) {
+  if (!runState || !runState.ship || !runState.activePad) {
+    return null;
+  }
+
+  const velocity = runState.ship.velocity || { x: 0, y: 0 };
+  const vertical = Math.abs(velocity.y);
+  const lateral = Math.abs(velocity.x);
+  const spin = Math.abs(runState.ship.angularVelocity || 0);
+  const safe =
+    vertical <= LANDING_VERTICAL_SPEED_THRESHOLD &&
+    lateral <= LANDING_LATERAL_SPEED_THRESHOLD &&
+    spin <= LANDING_ROTATION_SPEED_THRESHOLD;
+
+  if (safe) {
+    return "safe";
+  }
+
+  const crashMultiplier = 1.5;
+  const crash =
+    vertical > LANDING_VERTICAL_SPEED_THRESHOLD * crashMultiplier ||
+    lateral > LANDING_LATERAL_SPEED_THRESHOLD * crashMultiplier ||
+    spin > LANDING_ROTATION_SPEED_THRESHOLD * crashMultiplier;
+
+  return crash ? "danger" : "warning";
+}
+
+function getToneColor(tone) {
+  if (tone === "safe") {
+    return "#6fe3a5";
+  }
+  if (tone === "warning") {
+    return "#f6c453";
+  }
+  if (tone === "danger") {
+    return "#e46a6a";
+  }
+
+  return null;
 }
 
 function buildPadPrompt(runState) {
@@ -1879,14 +2212,40 @@ function buildPadPrompt(runState) {
   }
 
   if (pad.type === "industrial" || pad.type === "mine") {
-    return "R / LB to refuel · L / RB to load He3 cargo";
+    if (runState.lastInputType === "gamepad") {
+      return "LB to refuel · RB to load He3 cargo";
+    }
+    return "R to refuel · L to load He3 cargo";
   }
 
   if (pad.type === "colony" || pad.type === "repair") {
-    return "R / LB to repair · U / RB to unload He3 cargo";
+    if (runState.lastInputType === "gamepad") {
+      return "LB to repair · RB to unload He3 cargo";
+    }
+    return "R to repair · U to unload He3 cargo";
   }
 
   return "";
+}
+
+function renderPadPrompt(ctx, runState, width, height) {
+  const prompt = buildPadPrompt(runState);
+  if (!prompt) {
+    return;
+  }
+
+  const promptY =
+    runState && runState.config && typeof runState.config.uiPadPromptY === "number"
+      ? runState.config.uiPadPromptY
+      : 0.66;
+
+  ctx.save();
+  ctx.fillStyle = "#dfe6ee";
+  ctx.font = "500 18px system-ui";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(prompt, width / 2, height * promptY);
+  ctx.restore();
 }
 
 function getUnitConfig(system) {
@@ -1931,6 +2290,15 @@ function convertValue(value, unit) {
   return value * unit.factor;
 }
 
+function getWorldScale(runState) {
+  if (!runState || !runState.config) {
+    return 1;
+  }
+
+  const scale = runState.config.worldUnitMeters;
+  return typeof scale === "number" && Number.isFinite(scale) ? scale : 1;
+}
+
 function formatTemperature(telemetry, unitSystem) {
   const normalized = String(unitSystem || "metric").toLowerCase();
   if (normalized === "imperial") {
@@ -1951,6 +2319,17 @@ function getMoneySymbol(unitSystem) {
     return "¤";
   }
   return "€";
+}
+
+function formatMoney(value, symbol) {
+  const amount = typeof value === "number" && Number.isFinite(value) ? value : 0;
+  const rounded = Math.round(Math.abs(amount));
+  const formatted =
+    typeof Intl !== "undefined" && Intl.NumberFormat
+      ? new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(rounded)
+      : String(rounded).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  const sign = amount < 0 ? "-" : "";
+  return `${sign}${symbol}${formatted}`;
 }
 function formatAngleDegrees(radians) {
   let degrees = (radians * 180) / Math.PI;
@@ -2011,15 +2390,110 @@ function getGroundDistance(runState) {
     return 0;
   }
 
+  const shipX = runState.ship.position ? runState.ship.position.x : 0;
+  const shipY = runState.ship.position ? runState.ship.position.y : 0;
+  const groundHeight = getGroundHeightAt(runState, shipX);
+  return groundHeight - shipY;
+}
+
+function getGroundHeightAt(runState, x) {
+  if (!runState || !runState.world) {
+    return 0;
+  }
+
   const world = runState.world || {};
   const terrain = world.terrain;
   if (!terrain) {
     return 0;
   }
 
-  const shipX = runState.ship.position ? runState.ship.position.x : 0;
-  const shipY = runState.ship.position ? runState.ship.position.y : 0;
-  return terrain.getHeightAt(shipX) - shipY;
+  let groundHeight = terrain.getHeightAt(x);
+  const spacePads = world.spacePads;
+  if (spacePads && typeof spacePads.getPadAt === "function") {
+    const pad = spacePads.getPadAt(x);
+    if (pad && typeof pad.height === "number") {
+      groundHeight = pad.height;
+    }
+  }
+  return groundHeight;
+}
+
+function getGroundInfoAt(runState, x) {
+  if (!runState || !runState.world) {
+    return { height: 0, slope: 0 };
+  }
+
+  const world = runState.world || {};
+  const terrain = world.terrain;
+  if (!terrain) {
+    return { height: 0, slope: 0 };
+  }
+
+  let height = terrain.getHeightAt(x);
+  let slope = typeof terrain.getSlopeAt === "function" ? terrain.getSlopeAt(x) : 0;
+  const spacePads = world.spacePads;
+  if (spacePads && typeof spacePads.getPadAt === "function") {
+    const pad = spacePads.getPadAt(x);
+    if (pad && typeof pad.height === "number") {
+      height = pad.height;
+      slope = 0;
+    }
+  }
+  return { height, slope };
+}
+
+function findGroundImpact(runState, origin, direction, maxDistance) {
+  if (!origin || !direction || maxDistance <= 0) {
+    return null;
+  }
+
+  if (direction.y <= 0) {
+    return null;
+  }
+
+  const step = Math.max(1, maxDistance / 30);
+  let lastX = origin.x;
+  let lastY = origin.y;
+  let lastGround = getGroundHeightAt(runState, lastX);
+
+  for (let t = step; t <= maxDistance; t += step) {
+    const x = origin.x + direction.x * t;
+    const y = origin.y + direction.y * t;
+    const groundInfo = getGroundInfoAt(runState, x);
+    const groundY = groundInfo.height;
+    if (y >= groundY) {
+      const normal = normalizeVector({ x: -groundInfo.slope, y: 1 });
+      const alignment = clamp(direction.x * normal.x + direction.y * normal.y, 0, 1);
+      return {
+        x,
+        y: groundY,
+        distance: t,
+        alignment,
+      };
+    }
+    lastX = x;
+    lastY = y;
+    lastGround = groundY;
+  }
+
+  if (lastY >= lastGround) {
+    return {
+      x: lastX,
+      y: lastGround,
+      distance: maxDistance,
+      alignment: 0,
+    };
+  }
+
+  return null;
+}
+
+function normalizeVector(vec) {
+  const length = Math.hypot(vec.x, vec.y);
+  if (!length) {
+    return { x: 0, y: 0 };
+  }
+  return { x: vec.x / length, y: vec.y / length };
 }
 
 function computeAccelerationValues(runState) {
@@ -2084,7 +2558,11 @@ function createTelemetrySnapshot(runState) {
   const fuel = ship.fuel ?? 0;
   const fuelCapacity = ship.fuelCapacity ?? 0;
   const fuelPercent = fuelCapacity > 0 ? (fuel / fuelCapacity) * 100 : 0;
+  const cargoCapacity = ship.cargoCapacity ?? 0;
+  const cargoMass = ship.cargoMass ?? 0;
+  const cargoPercent = cargoCapacity > 0 ? (cargoMass / cargoCapacity) * 100 : 0;
   const hull = ship.hullHP ?? 0;
+  const dryMass = ship.dryMass ?? 0;
   const mass = ship.mass ?? 0;
   const rotationDeg = formatAngleDegrees(ship.rotation ?? 0);
   const spinDeg = formatSpinDegrees(ship.angularVelocity ?? 0);
@@ -2102,8 +2580,12 @@ function createTelemetrySnapshot(runState) {
     verticalSpeed,
     altitude,
     groundDistance,
-    fuelKg: fuel,
+    fuelKg: fuel * FUEL_MASS_PER_UNIT,
     fuelPercent,
+    cargoMass,
+    cargoCapacity,
+    cargoPercent,
+    dryMass,
     hull,
     mass,
     angleDeg: rotationDeg,
@@ -2136,13 +2618,8 @@ function getThrusterTemperatureK(runState) {
 }
 
 function handleLanding(runState) {
-  if (!runState || !runState.economy || !runState.cargoHold) {
+  if (!runState) {
     return;
-  }
-
-  const payout = runState.economy.deliverCargo(runState.cargoHold);
-  if (payout > 0) {
-    runState.money = runState.economy.getMoney();
   }
 }
 
@@ -2158,6 +2635,7 @@ function handleCrash(runState, damage) {
   runState.economy.crashCargo(runState.cargoHold);
   runState.money = runState.economy.getMoney();
   runState.ship.cargoMass = 0;
+  runState.ship.cargo = runState.cargoHold.getSlots();
 }
 
 function renderGameOver(ctx, width, height) {
@@ -2186,18 +2664,23 @@ function renderCrashLanded(ctx, width, height, runState) {
   ctx.font = "700 40px system-ui";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillText("CRASH-LANDED", width / 2, height / 2 - 24);
+  const crashY =
+    runState && runState.config && typeof runState.config.uiCrashMessageY === "number"
+      ? runState.config.uiCrashMessageY
+      : 0.33;
+  const titleY = height * crashY;
+  ctx.fillText("CRASH-LANDED", width / 2, titleY);
 
   ctx.font = "400 16px system-ui";
   ctx.fillStyle = "#e6eef7";
   const message =
     (runState && runState.crashMessage) || "You were towed to the nearest spacepad.";
-  ctx.fillText(message, width / 2, height / 2 + 6);
-  ctx.fillText("Press Esc to return to menu", width / 2, height / 2 + 28);
+  ctx.fillText(message, width / 2, titleY + 24);
+  ctx.fillText("Press Esc to return to menu", width / 2, titleY + 46);
   ctx.restore();
 }
 
-function renderCrashed(ctx, width, height) {
+function renderCrashed(ctx, width, height, config) {
   ctx.save();
   ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
   ctx.fillRect(0, 0, width, height);
@@ -2206,11 +2689,14 @@ function renderCrashed(ctx, width, height) {
   ctx.font = "700 44px system-ui";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillText("CRASHED", width / 2, height / 2 - 16);
+  const crashY =
+    config && typeof config.uiCrashMessageY === "number" ? config.uiCrashMessageY : 0.33;
+  const titleY = height * crashY;
+  ctx.fillText("CRASHED", width / 2, titleY);
 
   ctx.font = "400 18px system-ui";
   ctx.fillStyle = "#e6eef7";
-  ctx.fillText("Press Esc to return to menu", width / 2, height / 2 + 20);
+  ctx.fillText("Press Esc to return to menu", width / 2, titleY + 32);
   ctx.restore();
 }
 
@@ -2230,6 +2716,10 @@ function buildSaveModel(runState, musicState) {
       rotation: ship.rotation ?? 0,
       fuel: ship.fuel ?? 0,
       hullHP: ship.hullHP ?? 100,
+      thrusterHeat:
+        ship.thrusterHeat && typeof ship.thrusterHeat === "object"
+          ? { ...ship.thrusterHeat }
+          : createThrusterHeatState(),
       modules: ship.modules || {},
       cargo,
       cargoCapacity: ship.cargoCapacity ?? 0,
@@ -2331,4 +2821,20 @@ function getGamepad() {
 
   const pads = navigator.getGamepads();
   return pads && pads[0] ? pads[0] : null;
+}
+
+function isMusicEnabled(settings) {
+  if (!settings) {
+    return false;
+  }
+
+  return settings.masterVolume > 0 && settings.musicVolume > 0;
+}
+
+function isSfxEnabled(settings) {
+  if (!settings) {
+    return false;
+  }
+
+  return settings.masterVolume > 0 && settings.sfxVolume > 0;
 }

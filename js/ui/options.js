@@ -138,6 +138,7 @@ export function createOptions({
       selectedIndex,
       message,
       controls,
+      inputType: input.getLastActiveSource ? input.getLastActiveSource() : "keyboard",
     };
   }
 
@@ -186,7 +187,7 @@ function buildConfig() {
       max: 100,
       step: 5,
       unit: "percent",
-      defaultValue: 30,
+      defaultValue: 15,
     },
     {
       id: "soundSpacer",
@@ -197,10 +198,10 @@ function buildConfig() {
       id: "cameraZoomSensitivity",
       label: "Camera Zoom Sensitivity",
       type: "range",
-      min: 0.5,
-      max: 2,
+      min: 0.2,
+      max: 3,
       step: 0.1,
-      defaultValue: 1,
+      defaultValue: 2,
     },
     {
       id: "unitSystem",
@@ -220,8 +221,8 @@ function buildConfig() {
       id: "difficulty",
       label: "Difficulty",
       type: "enum",
-      values: ["easy", "hard"],
-      defaultValue: "easy",
+      values: ["easy", "high"],
+      defaultValue: "high",
     },
     {
       id: "resetDefaults",
@@ -286,7 +287,7 @@ function getDifficultyHints() {
       items: ["Thrust +15%", "Gravity -15%", "Fuel burn -20%"],
     },
     {
-      label: "HARD",
+      label: "HIGH",
       items: ["Thrust -10%", "Gravity +10%", "Fuel burn +20%"],
     },
   ];
@@ -338,7 +339,7 @@ function buildAutoHints(lastActive) {
 
 function createOptionsInput({ deadzone }) {
   const actionQueue = [];
-  let lastInputSource = null;
+  let lastInputSource = "keyboard";
   const previousPad = {
     up: false,
     down: false,

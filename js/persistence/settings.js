@@ -1,13 +1,13 @@
 // Local storage persistence for settings only.
-const STORAGE_KEY = "lunartrucker.settings.v1";
+const STORAGE_KEY = "lunartransporter.settings.v1";
 
 const DEFAULT_SETTINGS = Object.freeze({
   masterVolume: 60,
   sfxVolume: 80,
-  musicVolume: 30,
-  cameraZoomSensitivity: 1,
+  musicVolume: 15,
+  cameraZoomSensitivity: 2.0,
   inputMode: "auto",
-  difficulty: "easy",
+  difficulty: "high",
   unitSystem: "metric",
 });
 
@@ -57,7 +57,7 @@ function normalizeSettings(settings) {
     masterVolume: normalizePercent(settings.masterVolume ?? base.masterVolume),
     sfxVolume: normalizePercent(settings.sfxVolume ?? base.sfxVolume),
     musicVolume: normalizePercent(settings.musicVolume ?? base.musicVolume),
-    cameraZoomSensitivity: clamp(settings.cameraZoomSensitivity ?? base.cameraZoomSensitivity, 0.5, 2),
+    cameraZoomSensitivity: clamp(settings.cameraZoomSensitivity ?? base.cameraZoomSensitivity, 0.2, 3),
     inputMode: normalizeInputMode(settings.inputMode ?? base.inputMode),
     difficulty: normalizeDifficulty(settings.difficulty ?? base.difficulty),
     unitSystem: normalizeUnitSystem(settings.unitSystem ?? base.unitSystem),
@@ -75,8 +75,8 @@ function normalizeInputMode(value) {
 
 function normalizeDifficulty(value) {
   const normalized = String(value || "").toLowerCase();
-  if (normalized === "hard") {
-    return "hard";
+  if (normalized === "hard" || normalized === "high") {
+    return "high";
   }
 
   return "easy";

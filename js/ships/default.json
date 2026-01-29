@@ -3,10 +3,10 @@
   "name": "Starter",
   "parts": [
     { "partId": "legs-basic", "offset": [0, 0] },
-    { "partId": "body-basic", "offset": [0, -4] },
-    { "partId": "nozzle-basic", "offset": [0, 0] }
+    { "partId": "body-basic", "offset": [0, -8] },
+    { "partId": "nozzle-basic", "offset": [0, 2] }
   ],
   "thrusters": {
-    "main": { "offset": [0, 20] }
+    "main": { "offset": [0, 26] }
   }
 }

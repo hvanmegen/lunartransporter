@@ -4,8 +4,8 @@ export function renderOptions(ctx, optionsState, { width = ctx.canvas.width, hei
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
 
-  const titleY = height * 0.22;
-  const listY = height * 0.42;
+  const titleY = height * 0.14;
+  const listY = height * 0.34;
   const lineHeight = 34;
 
   ctx.fillStyle = "#e6eef7";
@@ -38,12 +38,17 @@ export function renderOptions(ctx, optionsState, { width = ctx.canvas.width, hei
 
   ctx.font = "400 14px system-ui";
   ctx.fillStyle = "#9fb1c2";
-  ctx.fillText("Left/Right to adjust · Enter to apply · Esc to go back", width / 2, height * 0.78);
+  const inputType = optionsState.inputType === "gamepad" ? "gamepad" : "keyboard";
+  const hint =
+    inputType === "gamepad"
+      ? "D-pad/Stick to move · Left/Right adjust · A apply · B back"
+      : "Up/Down to move · Left/Right adjust · Enter apply · Esc back";
+  ctx.fillText(hint, width / 2, height * 0.7);
 
   if (optionsState.message) {
     ctx.font = "400 16px system-ui";
     ctx.fillStyle = "#f6c453";
-    ctx.fillText(optionsState.message, width / 2, height * 0.84);
+    ctx.fillText(optionsState.message, width / 2, height * 0.76);
   }
 
   ctx.restore();
@@ -54,7 +59,7 @@ function renderControls(ctx, sections, width, height) {
     return;
   }
 
-  const startY = height * 0.62;
+  const startY = height * 0.54;
   let y = startY;
 
   ctx.textAlign = "center";

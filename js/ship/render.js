@@ -140,7 +140,7 @@ function drawThrusters(ctx, thrustInput, thrusters, thrusterHeat) {
 
 function drawMainFlame(ctx, strength, thruster, heat) {
   const flameLength = 8 + strength * 20;
-  const flameWidth = 6 + strength * 6;
+  const flameWidth = 4 + strength * 3;
   const offset = thruster && thruster.offset ? thruster.offset : [0, 16];
   const flameColors = getFlameColors(heat);
 
@@ -170,8 +170,8 @@ function drawMainFlame(ctx, strength, thruster, heat) {
 
 function getFlameColors(heat) {
   const t = clamp(heat || 0, 0, 1);
-  const outer = lerpColor([60, 140, 255], [140, 210, 255], t * 0.7);
-  const inner = lerpColor([190, 230, 255], [220, 245, 255], t * 0.6);
+  const outer = lerpColor([70, 150, 255], [255, 180, 70], t);
+  const inner = lerpColor([200, 235, 255], [255, 235, 200], t * 0.9);
   return {
     outer: toRgb(outer),
     inner: toRgb(inner),
@@ -184,7 +184,7 @@ function drawEngineBellHeat(ctx, heat) {
     return;
   }
 
-  const color = lerpColor([70, 20, 18], [170, 60, 40], t * 0.8);
+  const color = lerpColor([70, 20, 18], [220, 90, 50], t * 0.9);
   ctx.save();
   ctx.strokeStyle = toRgba(color, 0.6);
   ctx.lineWidth = 2.2;

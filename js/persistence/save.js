@@ -1,5 +1,5 @@
 // Local storage persistence for game state.
-const STORAGE_KEY = "lunartrucker.save.v2";
+const STORAGE_KEY = "lunartransporter.save.v2";
 const SAVE_VERSION = 1;
 
 export function saveGame(gameModel) {
@@ -86,6 +86,7 @@ function getDefaultSave() {
       rotation: 0,
       fuel: 0,
       hullHP: 100,
+      thrusterHeat: { main: 0, retro: 0 },
       modules: {},
       cargo: [],
       cargoCapacity: 0,
@@ -117,6 +118,7 @@ function normalizeShip(ship, defaults) {
     rotation: normalizeNumber(ship.rotation, defaults.rotation),
     fuel: normalizeNumber(ship.fuel, defaults.fuel),
     hullHP: normalizeNumber(ship.hullHP ?? ship.health ?? ship.hp, defaults.hullHP),
+    thrusterHeat: normalizeThrusterHeat(ship.thrusterHeat, defaults.thrusterHeat),
     modules: normalizeModules(ship.modules, defaults.modules),
     cargo: normalizeCargo(ship.cargo, defaults.cargo),
     cargoCapacity: normalizeNumber(ship.cargoCapacity, defaults.cargoCapacity),
@@ -183,6 +185,17 @@ function normalizeVector(value, fallback) {
 
 function normalizeNumber(value, fallback) {
   return typeof value === "number" && !Number.isNaN(value) ? value : fallback;
+}
+
+function normalizeThrusterHeat(value, fallback) {
+  if (!value || typeof value !== "object") {
+    return { ...fallback };
+  }
+
+  return {
+    main: normalizeNumber(value.main, fallback.main),
+    retro: normalizeNumber(value.retro, fallback.retro),
+  };
 }
 
 function normalizeModules(modules, fallback) {

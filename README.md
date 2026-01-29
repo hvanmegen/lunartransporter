@@ -1,4 +1,4 @@
-# Lunar Trucker
+# Lunar Transporter
 
 Modular HTML5 canvas lander with a fixed-timestep loop, procedural terrain, ship physics, and a menu/options flow. The game runs fully client-side; `index.php` is used only for asset versioning and music playlist discovery.
 

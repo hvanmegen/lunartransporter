@@ -1,5 +1,5 @@
 // Global config persisted in localStorage.
-const STORAGE_KEY = "lunartrucker.config.v1";
+const STORAGE_KEY = "lunartransporter.config.v1";
 
 const DEFAULT_CONFIG = Object.freeze({
   debug: true,
@@ -9,6 +9,7 @@ const DEFAULT_CONFIG = Object.freeze({
   thrusterHeatCool: 0.032,
   thrusterHeatCoolActive: 1,
   thrusterHeatCoolIdle: 0.032,
+  thrusterHeatCoolScale: 0.65,
   thrusterHeatMax: 1,
   thrusterHeatTickThreshold: 0.3,
   thrusterHeatTickMinDelay: 0.35,
@@ -23,9 +24,23 @@ const DEFAULT_CONFIG = Object.freeze({
   cargoHe3SellMultiplier: 6,
   cargoTransferRate: 500,
   repairRate: 6,
-  autoPadMinSpacing: 500,
-  autoPadCountDivisor: 1200,
+  autoPadMinSpacing: 10000,
+  autoPadCountDivisor: 24000,
   autoPadMinCount: 3,
+  uiPadPromptY: 0.66,
+  uiCrashMessageY: 0.33,
+  lowFuelWarningThreshold: 0.2,
+  lowFuelWarningInterval: 0.9,
+  dustAltitude: 100,
+  dustMaxParticles: 400,
+  dustSpawnRate: 280,
+  dustBaseSpeed: 12,
+  dustLift: 12,
+  dustSpread: 24,
+  dustSize: 1.3,
+  dustLife: 1.6,
+  worldUnitMeters: 0.25,
+  worldWidth: 10000,
 });
 
 export function loadConfig() {
@@ -98,6 +113,12 @@ function normalizeConfig(config) {
       0,
       10
     ),
+    thrusterHeatCoolScale: clampNumber(
+      config.thrusterHeatCoolScale,
+      DEFAULT_CONFIG.thrusterHeatCoolScale,
+      0.1,
+      3
+    ),
     thrusterHeatMax: clampNumber(config.thrusterHeatMax, DEFAULT_CONFIG.thrusterHeatMax, 0.2, 5),
     thrusterHeatTickThreshold: clampNumber(
       config.thrusterHeatTickThreshold,
@@ -167,17 +188,13 @@ function normalizeConfig(config) {
       5000
     ),
     repairRate: clampNumber(config.repairRate, DEFAULT_CONFIG.repairRate, 0, 100),
-    autoPadMinSpacing: clampNumber(
-      config.autoPadMinSpacing,
-      DEFAULT_CONFIG.autoPadMinSpacing,
-      100,
-      5000
+    autoPadMinSpacing: Math.max(
+      clampNumber(config.autoPadMinSpacing, DEFAULT_CONFIG.autoPadMinSpacing, 100, 10000),
+      DEFAULT_CONFIG.autoPadMinSpacing
     ),
-    autoPadCountDivisor: clampNumber(
-      config.autoPadCountDivisor,
-      DEFAULT_CONFIG.autoPadCountDivisor,
-      200,
-      10000
+    autoPadCountDivisor: Math.max(
+      clampNumber(config.autoPadCountDivisor, DEFAULT_CONFIG.autoPadCountDivisor, 200, 10000),
+      DEFAULT_CONFIG.autoPadCountDivisor
     ),
     autoPadMinCount: clampNumber(
       config.autoPadMinCount,
@@ -185,6 +202,47 @@ function normalizeConfig(config) {
       0,
       50
     ),
+    uiPadPromptY: clampNumber(config.uiPadPromptY, DEFAULT_CONFIG.uiPadPromptY, 0.1, 0.9),
+    uiCrashMessageY: clampNumber(config.uiCrashMessageY, DEFAULT_CONFIG.uiCrashMessageY, 0.1, 0.9),
+    lowFuelWarningThreshold: clampNumber(
+      config.lowFuelWarningThreshold,
+      DEFAULT_CONFIG.lowFuelWarningThreshold,
+      0.01,
+      1
+    ),
+    lowFuelWarningInterval: clampNumber(
+      config.lowFuelWarningInterval,
+      DEFAULT_CONFIG.lowFuelWarningInterval,
+      0.2,
+      5
+    ),
+    dustAltitude: clampNumber(config.dustAltitude, DEFAULT_CONFIG.dustAltitude, 5, 400),
+    dustMaxParticles: Math.round(
+      clampNumber(config.dustMaxParticles, DEFAULT_CONFIG.dustMaxParticles, 20, 600)
+    ),
+    dustSpawnRate: clampNumber(
+      config.dustSpawnRate,
+      DEFAULT_CONFIG.dustSpawnRate,
+      5,
+      400
+    ),
+    dustBaseSpeed: clampNumber(
+      config.dustBaseSpeed,
+      DEFAULT_CONFIG.dustBaseSpeed,
+      1,
+      60
+    ),
+    dustLift: clampNumber(config.dustLift, DEFAULT_CONFIG.dustLift, 1, 60),
+    dustSpread: clampNumber(config.dustSpread, DEFAULT_CONFIG.dustSpread, 2, 120),
+    dustSize: clampNumber(config.dustSize, DEFAULT_CONFIG.dustSize, 0.5, 6),
+    dustLife: clampNumber(config.dustLife, DEFAULT_CONFIG.dustLife, 0.1, 3),
+    worldUnitMeters: clampNumber(
+      config.worldUnitMeters,
+      DEFAULT_CONFIG.worldUnitMeters,
+      0.01,
+      10
+    ),
+    worldWidth: clampNumber(config.worldWidth, DEFAULT_CONFIG.worldWidth, 1000, 50000),
   };
 }
 

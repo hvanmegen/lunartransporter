@@ -58,6 +58,23 @@ export function createInput({ deadzone = 0.2, mode = "auto", debug = false } = {
     return getActiveSource().getUnloadCargo ? getActiveSource().getUnloadCargo() : 0;
   }
 
+  function getLastUsedType() {
+    const keyboardTime = keyboard.getLastInputTime ? keyboard.getLastInputTime() : 0;
+    const gamepadTime = gamepad.getLastInputTime ? gamepad.getLastInputTime() : 0;
+
+    if (gamepad.isConnected && gamepad.isConnected()) {
+      if (gamepadTime > keyboardTime && gamepadTime > 0) {
+        return "gamepad";
+      }
+      if (keyboardTime > 0) {
+        return "keyboard";
+      }
+      return inputMode === "gamepad" ? "gamepad" : "keyboard";
+    }
+
+    return "keyboard";
+  }
+
   function setMode(nextMode) {
     inputMode = normalizeMode(nextMode);
   }
@@ -87,6 +104,7 @@ export function createInput({ deadzone = 0.2, mode = "auto", debug = false } = {
     getRefuel,
     getLoadCargo,
     getUnloadCargo,
+    getLastUsedType,
     setMode,
     setDebug,
     update,

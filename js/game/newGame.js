@@ -1,9 +1,4 @@
-import {
-  FUEL_MASS_PER_UNIT,
-  SHIP_COLLISION_RADIUS,
-  SHIP_MASS,
-  SHIP_TARGET_TOTAL_MASS,
-} from "../core/constants.js";
+import { FUEL_MASS_PER_UNIT, SHIP_COLLISION_RADIUS, SHIP_MASS } from "../core/constants.js";
 import { GameState } from "../core/state.js";
 import { createSpacePads } from "../world/spacePads.js";
 import { createTerrain } from "../world/terrain.js";
@@ -39,9 +34,8 @@ export function createNewGame({ worldWidth = 5000, seed = 0, shipModel = null, c
       : shipModel && shipModel.bounds
         ? shipModel.bounds.maxY
         : SHIP_COLLISION_RADIUS;
+  const dryMass = stats.mass;
   const fuelMass = stats.fuelCapacity * FUEL_MASS_PER_UNIT;
-  const targetTotal = SHIP_TARGET_TOTAL_MASS;
-  const dryMass = Math.max(0, targetTotal - fuelMass);
 
   const cargoCapacity = shipModel && typeof shipModel.cargoCapacity === "number" ? shipModel.cargoCapacity : 0;
   const ship = {

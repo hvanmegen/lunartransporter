@@ -68,6 +68,20 @@ export function createMusicPlayer({ tracks = [], volume = 0.8, onTrackChange = n
     }
   }
 
+  function stop() {
+    if (audio) {
+      audio.pause();
+      audio.removeEventListener("ended", handleEnded);
+      audio.removeEventListener("loadedmetadata", applyPendingSeek);
+      audio.removeEventListener("canplay", applyPendingSeek);
+      audio.src = "";
+    }
+    audio = null;
+    started = false;
+    currentSrc = "";
+    pendingSeek = null;
+  }
+
   function getState() {
     return {
       src: currentSrc || playlist[currentIndex] || "",
@@ -147,6 +161,7 @@ export function createMusicPlayer({ tracks = [], volume = 0.8, onTrackChange = n
 
   return {
     start,
+    stop,
     setTracks,
     setVolume,
     getState,

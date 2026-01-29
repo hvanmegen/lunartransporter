@@ -100,6 +100,7 @@ export function createMenu({
       items: menuItems.map((item) => ({ ...item })),
       selectedIndex,
       message,
+      inputType: input.getLastActiveSource ? input.getLastActiveSource() : "keyboard",
     };
   }
 
@@ -143,6 +144,7 @@ function findNextEnabledIndex(items, startIndex, delta) {
 
 function createMenuInput({ deadzone }) {
   const actionQueue = [];
+  let lastInputSource = "keyboard";
   const previousPad = {
     up: false,
     down: false,
@@ -161,6 +163,7 @@ function createMenuInput({ deadzone }) {
       return;
     }
 
+    lastInputSource = "keyboard";
     enqueueAction(mapKeyToAction(event.code));
   }
 
@@ -181,6 +184,10 @@ function createMenuInput({ deadzone }) {
 
   function consumeAction() {
     return actionQueue.shift() || null;
+  }
+
+  function getLastActiveSource() {
+    return lastInputSource;
   }
 
   function destroy() {
@@ -226,18 +233,23 @@ function createMenuInput({ deadzone }) {
 
     if (upPressed && !previousPad.up) {
       enqueueAction("up");
+      lastInputSource = "gamepad";
     }
     if (downPressed && !previousPad.down) {
       enqueueAction("down");
+      lastInputSource = "gamepad";
     }
     if (selectPressed && !previousPad.select) {
       enqueueAction("select");
+      lastInputSource = "gamepad";
     }
     if (backPressed && !previousPad.back) {
       enqueueAction("back");
+      lastInputSource = "gamepad";
     }
     if (startPressed && !previousPad.start) {
       enqueueAction("back");
+      lastInputSource = "gamepad";
     }
 
     previousPad.up = upPressed;
@@ -250,6 +262,7 @@ function createMenuInput({ deadzone }) {
   return {
     update,
     consumeAction,
+    getLastActiveSource,
     clear,
     destroy,
   };

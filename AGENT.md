@@ -1,7 +1,7 @@
-# Agent Guide: Lunar Trucker
+# Agent Guide: Lunar Transporter
 
 ## App overview
-Lunar Trucker is a modular HTML5 canvas game. The runtime is fully client-side JavaScript, but `index.php` is used to:
+Lunar Transporter is a modular HTML5 canvas game. The runtime is fully client-side JavaScript, but `index.php` is used to:
 - Add cache-busting query params to JS assets.
 - Scan `media/music/` for playable tracks.
 - Emit a `music-tracks` JSON script tag consumed by the JS bootstrapping.
@@ -25,9 +25,9 @@ The core game loop uses a fixed timestep (60 FPS update) and renders to a full-w
 - `js/game/` — new-game setup, pad placement, run initialization.
 
 ## Persistence
-- Config: `lunartrucker.config.v1` (debug and tuning defaults).
-- Settings: `lunartrucker.settings.v1` (input mode, volumes, units).
-- Save: `lunartrucker.save.v2` (ship/world/run snapshot).
+- Config: `lunartransporter.config.v1` (debug and tuning defaults).
+- Settings: `lunartransporter.settings.v1` (input mode, volumes, units).
+- Save: `lunartransporter.save.v2` (ship/world/run snapshot).
 
 ## Music playlist
 `index.php` scans `media/music/` for `.mp3`, `.ogg`, or `.wav` and emits a playlist. The JS music player cycles through this list and resumes playback if a save file contains a stored track/time.

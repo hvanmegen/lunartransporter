@@ -16,6 +16,11 @@ export function renderMenu(ctx, menuState, { width = ctx.canvas.width, height = 
     const y = listY + index * lineHeight;
     const isSelected = index === menuState.selectedIndex;
     const isDisabled = Boolean(item.disabled);
+    const isSpacer = item.type === "spacer";
+
+    if (isSpacer) {
+      return;
+    }
 
     ctx.font = item.isActive ? "700 20px system-ui" : "500 20px system-ui";
 
@@ -41,8 +46,17 @@ export function renderMenu(ctx, menuState, { width = ctx.canvas.width, height = 
   if (menuState.message) {
     ctx.font = "400 16px system-ui";
     ctx.fillStyle = "#f6c453";
-    ctx.fillText(menuState.message, width / 2, height * 0.8);
+    ctx.fillText(menuState.message, width / 2, height * 0.82);
   }
+
+  const inputType = menuState.inputType === "gamepad" ? "gamepad" : "keyboard";
+  ctx.font = "400 14px system-ui";
+  ctx.fillStyle = "#9fb1c2";
+  const hint =
+    inputType === "gamepad"
+      ? "D-pad/Stick to move · A select · B back"
+      : "Up/Down to move · Enter select · Esc back";
+  ctx.fillText(hint, width / 2, height * 0.75);
 
   ctx.restore();
 }

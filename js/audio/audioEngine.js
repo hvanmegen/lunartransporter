@@ -26,6 +26,16 @@ export function createAudioEngine({ masterVolume = 0.8, sfxVolume = 0.8 } = {}) 
   let cargoNoise = null;
   let cargoFilter = null;
   let cargoGain = null;
+  let repairNoise = null;
+  let repairFilter = null;
+  let repairGain = null;
+  let repairGate = null;
+  let repairDelay = null;
+  let repairDelayGain = null;
+  let repairDelayFeedback = null;
+  let repairGateOsc = null;
+  let repairGateGain = null;
+  let repairGateOffset = null;
   let started = false;
   let lastState = null;
   let volume = clamp(masterVolume, 0, 1);
@@ -36,6 +46,11 @@ export function createAudioEngine({ masterVolume = 0.8, sfxVolume = 0.8 } = {}) 
   let ambientRecoverDuration = 0;
   let lastSfxActive = false;
   let nextCoolingTickTime = 0;
+  let nextRepairTickTime = 0;
+  let nextRepairBurstTime = 0;
+  let repairBurstRemaining = 0;
+  let enabled = true;
+  let nextFuelAlarmTime = 0;
 
   function start() {
     if (started) {
@@ -147,6 +162,47 @@ export function createAudioEngine({ masterVolume = 0.8, sfxVolume = 0.8 } = {}) 
     cargoFilter.connect(cargoGain);
     cargoGain.connect(sfxGain);
 
+    // Repair wrench/gate noise.
+    repairNoise = createLoopedNoise(context);
+    repairFilter = context.createBiquadFilter();
+    repairFilter.type = "bandpass";
+    repairFilter.frequency.value = 1200;
+    repairFilter.Q.value = 1.4;
+    repairGain = context.createGain();
+    repairGain.gain.value = 0;
+    repairGate = context.createGain();
+    repairGate.gain.value = 0;
+    repairNoise.connect(repairFilter);
+    repairFilter.connect(repairGain);
+    repairGain.connect(repairGate);
+    repairGate.connect(sfxGain);
+
+    repairDelay = context.createDelay(0.2);
+    repairDelay.delayTime.value = 0.06;
+    repairDelayFeedback = context.createGain();
+    repairDelayFeedback.gain.value = 0.22;
+    repairDelayGain = context.createGain();
+    repairDelayGain.gain.value = 0.25;
+    repairGate.connect(repairDelay);
+    repairDelay.connect(repairDelayGain);
+    repairDelayGain.connect(sfxGain);
+    repairDelay.connect(repairDelayFeedback);
+    repairDelayFeedback.connect(repairDelay);
+
+    repairGateOsc = context.createOscillator();
+    repairGateOsc.type = "square";
+    repairGateOsc.frequency.value = 1;
+    repairGateGain = context.createGain();
+    repairGateGain.gain.value = 0.5;
+    repairGateOsc.connect(repairGateGain);
+    if (context.createConstantSource) {
+      repairGateOffset = context.createConstantSource();
+      repairGateOffset.offset.value = 0.5;
+      repairGateOffset.connect(repairGate.gain);
+      repairGateOffset.start();
+      repairGateGain.connect(repairGate.gain);
+    }
+
     engineNoise.start();
     engineRumble.start();
     rotationNoise.start();
@@ -155,9 +211,63 @@ export function createAudioEngine({ masterVolume = 0.8, sfxVolume = 0.8 } = {}) 
     ambientTone.start();
     refuelNoise.start();
     cargoNoise.start();
+    repairNoise.start();
+    repairGateOsc.start();
 
     started = true;
     return true;
+  }
+
+  function setEnabled(nextEnabled) {
+    enabled = Boolean(nextEnabled);
+    if (!context) {
+      return;
+    }
+
+    if (enabled) {
+      context.resume().catch(() => {});
+    } else {
+      if (engineGain) {
+        engineGain.gain.setTargetAtTime(0, context.currentTime, 0.05);
+      }
+      if (engineMidGain) {
+        engineMidGain.gain.setTargetAtTime(0, context.currentTime, 0.05);
+      }
+      if (engineRumbleGain) {
+        engineRumbleGain.gain.setTargetAtTime(0, context.currentTime, 0.05);
+      }
+      if (rotationGain) {
+        rotationGain.gain.setTargetAtTime(0, context.currentTime, 0.05);
+      }
+      if (rotationToneGain) {
+        rotationToneGain.gain.setTargetAtTime(0, context.currentTime, 0.05);
+      }
+      if (ambientGain) {
+        ambientGain.gain.setTargetAtTime(0, context.currentTime, 0.05);
+      }
+      if (ambientToneGain) {
+        ambientToneGain.gain.setTargetAtTime(0, context.currentTime, 0.05);
+      }
+      if (refuelGain) {
+        refuelGain.gain.setTargetAtTime(0, context.currentTime, 0.05);
+      }
+      if (cargoGain) {
+        cargoGain.gain.setTargetAtTime(0, context.currentTime, 0.05);
+      }
+      if (repairGain) {
+        repairGain.gain.setTargetAtTime(0, context.currentTime, 0.05);
+      }
+      if (repairGate) {
+        repairGate.gain.setTargetAtTime(0, context.currentTime, 0.05);
+      }
+      if (repairGateGain) {
+        repairGateGain.gain.setTargetAtTime(0, context.currentTime, 0.05);
+      }
+      if (repairGateOffset) {
+        repairGateOffset.offset.setTargetAtTime(0, context.currentTime, 0.05);
+      }
+      context.suspend().catch(() => {});
+    }
   }
 
   function setMasterVolume(nextVolume) {
@@ -181,8 +291,10 @@ export function createAudioEngine({ masterVolume = 0.8, sfxVolume = 0.8 } = {}) 
     hotThrusters = null,
     refuel = null,
     cargo = null,
+    repair = null,
+    fuelAlarm = null,
   } = {}) {
-    if (!started || !context) {
+    if (!started || !context || !enabled) {
       return;
     }
 
@@ -194,9 +306,9 @@ export function createAudioEngine({ masterVolume = 0.8, sfxVolume = 0.8 } = {}) 
 
     const engineLevel = Math.pow(throttleValue, 1.4);
     const mainScale = 0.5;
-    engineGain.gain.setTargetAtTime(engineLevel * 0.34 * mainScale, now, 0.05);
+    engineGain.gain.setTargetAtTime(engineLevel * 0.68 * mainScale, now, 0.05);
     engineFilter.frequency.setTargetAtTime(300 + engineLevel * 1500, now, 0.05);
-    engineMidGain.gain.setTargetAtTime(engineLevel * 0.07 * mainScale, now, 0.05);
+    engineMidGain.gain.setTargetAtTime(engineLevel * 0.035 * mainScale, now, 0.05);
     engineMidFilter.frequency.setTargetAtTime(850 + engineLevel * 1100, now, 0.05);
     engineRumble.frequency.setTargetAtTime(36 + engineLevel * 68, now, 0.05);
     engineRumbleGain.gain.setTargetAtTime(engineLevel * 0.26 * mainScale, now, 0.05);
@@ -241,6 +353,8 @@ export function createAudioEngine({ masterVolume = 0.8, sfxVolume = 0.8 } = {}) 
 
     updateRefuelSound(refuel, now);
     updateCargoSound(cargo, now);
+    updateRepairSound(repair, now);
+    updateFuelAlarm(fuelAlarm, now);
 
     handleCoolingTicks({
       now,
@@ -350,6 +464,48 @@ export function createAudioEngine({ masterVolume = 0.8, sfxVolume = 0.8 } = {}) 
     refuelFilter.frequency.setTargetAtTime(freq, now, 0.1);
   }
 
+  function updateFuelAlarm(fuelAlarm, now) {
+    if (!context || !sfxGain) {
+      return;
+    }
+
+    const active = Boolean(fuelAlarm && fuelAlarm.active);
+    if (!active) {
+      nextFuelAlarmTime = 0;
+      return;
+    }
+
+    if (nextFuelAlarmTime === 0) {
+      nextFuelAlarmTime = now;
+    }
+
+    const interval =
+      fuelAlarm && typeof fuelAlarm.interval === "number" ? fuelAlarm.interval : 0.9;
+    if (now >= nextFuelAlarmTime) {
+      playFuelAlarmBeep(now);
+      nextFuelAlarmTime = now + interval;
+    }
+  }
+
+  function playFuelAlarmBeep(now) {
+    if (!context || !sfxGain) {
+      return;
+    }
+
+    const osc = context.createOscillator();
+    const gain = context.createGain();
+    osc.type = "square";
+    osc.frequency.value = 900;
+    gain.gain.value = 0.001;
+    osc.connect(gain);
+    gain.connect(sfxGain);
+
+    gain.gain.exponentialRampToValueAtTime(0.2, now + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+    osc.start(now);
+    osc.stop(now + 0.28);
+  }
+
   function playRefuelDing() {
     if (!context || !sfxGain) {
       return;
@@ -393,6 +549,28 @@ export function createAudioEngine({ masterVolume = 0.8, sfxVolume = 0.8 } = {}) 
     noise.stop(now + 0.14);
   }
 
+  function playCargoClick() {
+    if (!context || !sfxGain) {
+      return;
+    }
+
+    const noise = createOneShotNoise(context, 0.04);
+    const filter = context.createBiquadFilter();
+    filter.type = "highpass";
+    filter.frequency.value = 900;
+    const gain = context.createGain();
+    gain.gain.value = 0.001;
+    noise.connect(filter);
+    filter.connect(gain);
+    gain.connect(sfxGain);
+
+    const now = context.currentTime;
+    gain.gain.exponentialRampToValueAtTime(0.18, now + 0.005);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.07);
+    noise.start(now);
+    noise.stop(now + 0.09);
+  }
+
   function updateCargoSound(cargo, now) {
     if (!cargoGain || !cargoFilter) {
       return;
@@ -410,6 +588,63 @@ export function createAudioEngine({ masterVolume = 0.8, sfxVolume = 0.8 } = {}) 
     const gainTarget = active ? 0.04 + 0.05 * curve : 0;
     cargoGain.gain.setTargetAtTime(gainTarget, now, 0.08);
     cargoFilter.frequency.setTargetAtTime(freq, now, 0.08);
+  }
+
+  function updateRepairSound(repair, now) {
+    if (!repairGain || !repairFilter) {
+      return;
+    }
+
+    const active = Boolean(repair && repair.active);
+    const intensity = clamp(
+      repair && typeof repair.intensity === "number" ? repair.intensity : 0.4,
+      0,
+      1
+    );
+    const wobble = Math.sin(now * 22) * 0.08 + Math.sin(now * 37) * 0.05;
+    const freq = Math.max(500, 900 + intensity * 800 + wobble * 400);
+    const gainTarget = active ? 0.18 + intensity * 0.16 : 0;
+    repairGain.gain.setTargetAtTime(gainTarget, now, 0.06);
+    repairFilter.frequency.setTargetAtTime(freq, now, 0.06);
+
+    if (repairGateGain) {
+      repairGateGain.gain.setTargetAtTime(0, now, 0.02);
+    }
+    if (repairGateOffset) {
+      repairGateOffset.offset.setTargetAtTime(0, now, 0.02);
+    }
+    if (!repairGate) {
+      return;
+    }
+    if (!active) {
+      repairGate.gain.setTargetAtTime(0, now, 0.03);
+      nextRepairTickTime = 0;
+      nextRepairBurstTime = 0;
+      repairBurstRemaining = 0;
+      return;
+    }
+
+    const burstInterval = 0.08;
+    const pauseInterval = 0.45;
+    const ticksPerBurst = Math.round(lerp(10, 14, intensity));
+    if (repairBurstRemaining === 0 && now >= nextRepairBurstTime) {
+      repairBurstRemaining = ticksPerBurst;
+    }
+    if (!nextRepairTickTime || now >= nextRepairTickTime) {
+      const start = now + 0.001;
+      const peak = clamp(1.1 + intensity * 0.25, 0.7, 1.4);
+      repairGate.gain.cancelScheduledValues(start);
+      repairGate.gain.setValueAtTime(0.0001, start);
+      repairGate.gain.exponentialRampToValueAtTime(peak, start + 0.002);
+      repairGate.gain.exponentialRampToValueAtTime(0.001, start + 0.03);
+      repairBurstRemaining = Math.max(0, repairBurstRemaining - 1);
+      if (repairBurstRemaining > 0) {
+        nextRepairTickTime = start + burstInterval;
+      } else {
+        nextRepairTickTime = start + pauseInterval;
+        nextRepairBurstTime = start + pauseInterval;
+      }
+    }
   }
 
   function handleCoolingTicks({ now, throttleValue, hotThrusters }) {
@@ -505,48 +740,48 @@ export function createAudioEngine({ masterVolume = 0.8, sfxVolume = 0.8 } = {}) 
       return;
     }
 
-    const noise = createOneShotNoise(context, 0.05 + heatFactor * 0.03);
-    const filter = context.createBiquadFilter();
-    filter.type = "bandpass";
-    const basePitch = lerp(600, 1600, Math.max(tempFactor, 0.2));
-    const jitter = (Math.random() - 0.5) * (120 + tempFactor * 260);
-    const pitch = Math.max(300, basePitch + jitter);
-    filter.frequency.value = pitch;
-    filter.Q.value = 13;
-    const gain = context.createGain();
-    gain.gain.value = 0.001;
-    noise.connect(filter);
-    filter.connect(gain);
-    gain.connect(sfxGain);
-
     const now = context.currentTime;
-    const target = 0.14 + heatFactor * 0.26;
-    gain.gain.exponentialRampToValueAtTime(target * gainScale, now + 0.008);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
-    noise.start(now);
-    noise.stop(now + 0.14);
-
     const osc = context.createOscillator();
-    const oscGain = context.createGain();
-    osc.type = "triangle";
-    const toneBase = lerp(420, 980, heatFactor);
-    osc.frequency.value = Math.max(280, toneBase + jitter * 0.4);
-    oscGain.gain.value = 0.001;
-    osc.connect(oscGain);
-    oscGain.connect(sfxGain);
-    oscGain.gain.exponentialRampToValueAtTime(0.11 * gainScale, now + 0.008);
-    oscGain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+    const osc2 = context.createOscillator();
+    const gain = context.createGain();
+    const gain2 = context.createGain();
+    osc.type = "sine";
+    osc2.type = "sine";
+    // Fixed pitch to avoid any perceived sweep.
+    const tone = 620 * 1.3;
+    osc.frequency.setValueAtTime(tone, now);
+    osc2.frequency.setValueAtTime(tone * 1.7, now);
+    gain.gain.value = 0.0001;
+    gain2.gain.value = 0.0001;
+    osc.connect(gain);
+    osc2.connect(gain2);
+    gain.connect(sfxGain);
+    gain2.connect(sfxGain);
+
+    const peak = (0.22 + heatFactor * 0.18) * gainScale;
+    const tail = 0.6;
+    const tailHigh = tail * 1.2;
+    gain.gain.exponentialRampToValueAtTime(peak, now + 0.003);
+    gain.gain.exponentialRampToValueAtTime(peak * 0.2, now + 0.03);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + tail);
+    gain2.gain.exponentialRampToValueAtTime(peak * 0.6, now + 0.003);
+    gain2.gain.exponentialRampToValueAtTime(peak * 0.12, now + 0.03);
+    gain2.gain.exponentialRampToValueAtTime(0.0001, now + tailHigh);
     osc.start(now);
-    osc.stop(now + 0.14);
+    osc2.start(now);
+    osc.stop(now + tail + 0.02);
+    osc2.stop(now + tailHigh + 0.02);
   }
 
   return {
     start,
+    setEnabled,
     setMasterVolume,
     setSfxVolume,
     update,
     playRefuelDing,
     playRefuelClick,
+    playCargoClick,
   };
 }
 
