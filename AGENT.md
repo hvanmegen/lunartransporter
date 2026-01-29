@@ -1,39 +1,58 @@
 # Agent Guide: Lunar Transporter
 
-## App overview
-Lunar Transporter is a modular HTML5 canvas game. The runtime is fully client-side JavaScript, but `index.php` is used to:
-- Add cache-busting query params to JS assets.
-- Scan `media/music/` for playable tracks.
-- Emit a `music-tracks` JSON script tag consumed by the JS bootstrapping.
-
-The core game loop uses a fixed timestep (60 FPS update) and renders to a full-window canvas. Telemetry and menus are drawn on the same canvas.
+## Overview
+Lunar Transporter is a modular HTML5 canvas game about hauling He3 on the Moon. The runtime is fully client‑side JavaScript; `index.php` only provides cache‑busting and a music playlist JSON.
 
 ## Entry points
 - `index.php` — server entry, asset versioning, music playlist discovery.
-- `js/main.js` — creates the canvas, loads JSON config, starts the game.
-- `js/core/game.js` — main loop, state machine, and orchestration.
+- `js/main.js` — creates the canvas, loads config/settings, starts the game.
+- `js/core/game.js` — main loop, state machine, HUD, audio hooks.
 
-## Major modules
-- `js/core/` — game state machine, timing, constants, high-level orchestration.
-- `js/render/` — camera and visual helpers.
-- `js/world/` — terrain generation, space pads, and collision system.
-- `js/ship/` — ship physics, procedural render, parts loader.
-- `js/controls/` — keyboard/gamepad input and unified input adapter.
-- `js/ui/` — menu and options screens.
-- `js/audio/` — procedural SFX and music player.
-- `js/persistence/` — localStorage for settings, config, and saves.
-- `js/game/` — new-game setup, pad placement, run initialization.
+## Runtime flow
+- Fixed‑timestep simulation (60 FPS update) + variable render.
+- State machine in `js/core/state.js`.
+- Menu/options rendered to the same canvas as gameplay.
+
+## Game states (core)
+`menu`, `options`, `flight`, `landing`, `landed`, `crashlanded`, `crashed`, `out_of_fuel`, `game_over`.
+
+## Economy + game over rules
+- Economy in `js/economy/economy.js`.
+- Game over triggers when money <= 0 (rounded) or when fuel is 0 and you are not landed on a colony/repair pad with cargo to sell.
+
+## Audio
+- SFX: `js/audio/audioEngine.js` (procedural).
+- Music: `js/audio/musicPlayer.js` (HTMLAudioElement).
+- Audio starts only after user input (browser policy).
+- Entering `game_over` mutes all SFX and stops music.
 
 ## Persistence
-- Config: `lunartransporter.config.v1` (debug and tuning defaults).
-- Settings: `lunartransporter.settings.v1` (input mode, volumes, units).
-- Save: `lunartransporter.save.v2` (ship/world/run snapshot).
+LocalStorage keys (see `js/persistence/`):
+- Config: `lunartransporter.config.v1`
+- Settings: `lunartransporter.settings.v1`
+- Save: `lunartransporter.save.v2`
 
-## Music playlist
-`index.php` scans `media/music/` for `.mp3`, `.ogg`, or `.wav` and emits a playlist. The JS music player cycles through this list and resumes playback if a save file contains a stored track/time.
+Save data includes ship/world/run snapshot, plus `ship.thrusterHeat` so engine temperature restores on load.
 
-## Conventions
-- ES modules only (no globals).
-- One system per file.
-- Physics/input/render are kept separate.
-- Constants live in `js/core/constants.js` and config defaults in `js/persistence/config.js`.
+## Key modules
+- `js/core/` — state machine, timing, constants, HUD, main loop.
+- `js/game/` — new game setup and run initialization.
+- `js/world/` — terrain generation, space pads, collision.
+- `js/ship/` — physics, procedural rendering, parts loader.
+- `js/controls/` — keyboard/gamepad input and mode selection.
+- `js/ui/` — menu and options screens.
+- `js/render/` — camera, dust, rendering helpers.
+- `js/audio/` — SFX and music player.
+- `js/persistence/` — settings/config/save normalization.
+
+## Common tweaks
+- Difficulty tuning: `getDifficultyTuning` in `js/core/game.js`.
+- Options layout: `js/ui/renderOptions.js`.
+- Default settings: `js/persistence/settings.js`.
+- Economy rates and heat model: `js/persistence/config.js`.
+- Audio tuning: `js/audio/audioEngine.js`.
+
+## Gotchas
+- No build step; ES modules only.
+- Music playback requires a user gesture.
+- Saves are localStorage; clearing browser storage resets everything.

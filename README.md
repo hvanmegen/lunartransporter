@@ -1,6 +1,6 @@
 # Lunar Transporter
 
-Modular HTML5 canvas lander with a fixed-timestep loop, procedural terrain, ship physics, and a menu/options flow. The game runs fully client-side; `index.php` is used only for asset versioning and music playlist discovery.
+Arcade‑realistic lunar lander about hauling He3, managing fuel, and landing safely. Built as a modular HTML5 canvas game with a fixed‑timestep loop, procedural terrain, and fully client‑side JS. `index.php` only handles cache‑busting and music playlist discovery.
 
 ## Quick start
 
@@ -10,12 +10,20 @@ php -S localhost:8000
 
 Then open `http://localhost:8000` (from this directory).
 
+## Features
+
+- Fixed‑timestep simulation with deterministic physics.
+- Procedural terrain + dynamic space pads.
+- Cargo economy: buy at mines, sell at colonies/repair pads.
+- Procedural SFX and optional music playlist.
+- Local saves for settings/config/run state.
+
 ## Project structure
 
 - `index.php` — entry point, cache-busting, music playlist JSON.
 - `js/main.js` — bootstraps canvas + game.
-- `js/core/` — timing, state machine, constants, game loop.
-- `js/render/` — camera + rendering helpers.
+- `js/core/` — timing, state machine, constants, game loop, HUD.
+- `js/render/` — camera + rendering helpers + dust.
 - `js/world/` — terrain, space pads, collision.
 - `js/ship/` — ship physics, procedural render, parts loader.
 - `js/controls/` — keyboard/gamepad input + mode selector.
@@ -28,6 +36,11 @@ Then open `http://localhost:8000` (from this directory).
 ## Music playlist
 
 Drop `.mp3` or `.ogg` files into `media/music/`. The PHP entry scans this folder and passes the playlist to the game. Files in this directory are intentionally ignored by git.
+
+## Configuration
+
+- `js/persistence/config.js` holds gameplay tuning defaults (fuel burn, heat, dust, etc.).
+- `js/persistence/settings.js` holds user settings (volumes, difficulty, units).
 
 ## Notes
 
