@@ -77,7 +77,7 @@ header('Last-Modified: ' . gmdate('D, d M Y H:i:s', $lastModified) . ' GMT');
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Modular Canvas Game</title>
+    <title>Lunar Transporter</title>
     <style>
       :root {
         color-scheme: light;
