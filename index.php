@@ -46,7 +46,7 @@ if (is_dir($musicRoot)) {
         }
 
         $extension = strtolower($file->getExtension());
-        if (!in_array($extension, ['mp3', 'ogg', 'wav'], true)) {
+        if (!in_array($extension, ['mp3', 'ogg'], true)) {
             continue;
         }
 

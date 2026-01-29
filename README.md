@@ -27,7 +27,7 @@ Then open `http://localhost:8000` (from this directory).
 
 ## Music playlist
 
-Drop `.mp3` or `.ogg` files (also `.wav`) into `media/music/`. The PHP entry scans this folder and passes the playlist to the game. Files in this directory are intentionally ignored by git.
+Drop `.mp3` or `.ogg` files into `media/music/`. The PHP entry scans this folder and passes the playlist to the game. Files in this directory are intentionally ignored by git.
 
 ## Notes
 
