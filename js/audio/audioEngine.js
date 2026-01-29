@@ -743,34 +743,57 @@ export function createAudioEngine({ masterVolume = 0.8, sfxVolume = 0.8 } = {}) 
     const now = context.currentTime;
     const osc = context.createOscillator();
     const osc2 = context.createOscillator();
+    const osc3 = context.createOscillator();
     const gain = context.createGain();
     const gain2 = context.createGain();
+    const gain3 = context.createGain();
     osc.type = "sine";
     osc2.type = "sine";
+    osc3.type = "sine";
     // Fixed pitch to avoid any perceived sweep.
-    const tone = 620 * 1.3;
+    const tone = 620 * 1.45;
+    const toneHigh = tone * 1.7;
+    const minSeparation = 5;
+    let toneMid = tone + Math.random() * (toneHigh - tone);
+    toneMid = clamp(toneMid, tone + minSeparation, toneHigh - minSeparation);
+    if (Math.abs(toneMid - tone) < minSeparation) {
+      toneMid = tone + minSeparation;
+    }
+    if (Math.abs(toneHigh - toneMid) < minSeparation) {
+      toneMid = toneHigh - minSeparation;
+    }
     osc.frequency.setValueAtTime(tone, now);
-    osc2.frequency.setValueAtTime(tone * 1.7, now);
+    osc2.frequency.setValueAtTime(toneHigh, now);
+    osc3.frequency.setValueAtTime(toneMid, now);
     gain.gain.value = 0.0001;
     gain2.gain.value = 0.0001;
+    gain3.gain.value = 0.0001;
     osc.connect(gain);
     osc2.connect(gain2);
+    osc3.connect(gain3);
     gain.connect(sfxGain);
     gain2.connect(sfxGain);
+    gain3.connect(sfxGain);
 
     const peak = (0.22 + heatFactor * 0.18) * gainScale;
     const tail = 0.6;
     const tailHigh = tail * 1.2;
+    const tailMid = tail * 1.05;
     gain.gain.exponentialRampToValueAtTime(peak, now + 0.003);
     gain.gain.exponentialRampToValueAtTime(peak * 0.2, now + 0.03);
     gain.gain.exponentialRampToValueAtTime(0.0001, now + tail);
     gain2.gain.exponentialRampToValueAtTime(peak * 0.6, now + 0.003);
     gain2.gain.exponentialRampToValueAtTime(peak * 0.12, now + 0.03);
     gain2.gain.exponentialRampToValueAtTime(0.0001, now + tailHigh);
+    gain3.gain.exponentialRampToValueAtTime(peak * 0.45, now + 0.003);
+    gain3.gain.exponentialRampToValueAtTime(peak * 0.1, now + 0.03);
+    gain3.gain.exponentialRampToValueAtTime(0.0001, now + tailMid);
     osc.start(now);
     osc2.start(now);
+    osc3.start(now);
     osc.stop(now + tail + 0.02);
     osc2.stop(now + tailHigh + 0.02);
+    osc3.stop(now + tailMid + 0.02);
   }
 
   return {

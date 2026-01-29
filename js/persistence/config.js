@@ -9,7 +9,7 @@ const DEFAULT_CONFIG = Object.freeze({
   thrusterHeatCool: 0.032,
   thrusterHeatCoolActive: 1,
   thrusterHeatCoolIdle: 0.032,
-  thrusterHeatCoolScale: 0.65,
+  thrusterHeatCoolScale: 0.85,
   thrusterHeatMax: 1,
   thrusterHeatTickThreshold: 0.3,
   thrusterHeatTickMinDelay: 0.35,
