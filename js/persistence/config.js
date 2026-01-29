@@ -2,7 +2,7 @@
 const STORAGE_KEY = "lunartransporter.config.v1";
 
 const DEFAULT_CONFIG = Object.freeze({
-  debug: true,
+  debug: false,
   crashLandFuelLossChance: 0.2,
   towingCost: 800,
   thrusterHeatRise: 1.1,
