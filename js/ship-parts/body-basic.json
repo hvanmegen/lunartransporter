@@ -1,0 +1,22 @@
+{
+  "id": "body-basic",
+  "name": "Basic Hull",
+  "mass": 850,
+  "cargoCapacity": 5000,
+  "center": [0, 0],
+  "shapes": [
+    {
+      "kind": "polygon",
+      "points": [[0, -18], [10, -2], [12, 18], [-12, 18], [-10, -2]],
+      "stroke": "#dfe6ee",
+      "lineWidth": 2
+    },
+    {
+      "kind": "circle",
+      "center": [0, -6],
+      "radius": 5,
+      "stroke": "#9aa7b2",
+      "lineWidth": 2
+    }
+  ]
+}

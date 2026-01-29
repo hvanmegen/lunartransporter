@@ -1,0 +1,15 @@
+{
+  "id": "nozzle-basic",
+  "name": "Thruster Nozzles",
+  "mass": 90,
+  "center": [0, 0],
+  "shapes": [
+    {
+      "kind": "polygon",
+      "points": [[-4, 8], [4, 8], [7, 16], [-7, 16]],
+      "fill": "#2a323a",
+      "stroke": "#9aa7b2",
+      "lineWidth": 2
+    }
+  ]
+}
